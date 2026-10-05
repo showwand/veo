@@ -1,0 +1,353 @@
+/* GPS, location marker, heading badge, Follow button and scrollbar fix.
+   Imported AFTER navigation.css. Uses the tokens from index.css. */
+
+/* ---------- Scrollbar fix ----------
+   .route-options is a scroll box (max-height 45%). During the Start animation its
+   available height shrinks for a moment, the cards overflow it, and the browser's
+   default white scrollbar appears. The box can still scroll (wheel / touch); the bar is just hidden. */
+.left-stack .route-options {
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* old Edge */
+}
+
+.left-stack .route-options::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* While navigating there is only one card, so nothing should scroll at all */
+.left-stack.is-navigating .route-options {
+  overflow-y: hidden;
+}
+
+/* The search-results list can scroll too: make ITS bar thin and dark instead of white */
+.search-results {
+  scrollbar-width: thin;
+  scrollbar-color: #3a4050 #0d0f15;
+}
+
+/* ---------- Location marker ----------
+   No `position` here on purpose: MapLibre gives every marker position: absolute,
+   and overriding it can shift the marker away from its coordinate. */
+.user-marker {
+  width: 22px;
+  height: 22px;
+  pointer-events: none;
+}
+
+.user-dot {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: var(--accent, #c6ff00);
+  border: 3px solid #07080c;
+  box-shadow: 0 0 0 2px var(--accent, #c6ff00), 0 0 16px var(--accent-glow, rgba(198, 255, 0, 0.35));
+  transition: opacity 0.3s;
+}
+
+/* The direction cone. It rotates around the dot; the map itself never rotates. */
+.user-cone {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 104px;
+  height: 104px;
+  margin: -52px 0 0 -52px;
+  border-radius: 50%;
+  opacity: 0;
+  transform-origin: 50% 50%;
+  transition: transform 140ms linear, opacity 0.25s;
+  will-change: transform;
+  /* A 56 degree wedge pointing up (north at 0 degrees), fading out with distance */
+  background: conic-gradient(
+    from -28deg at 50% 50%,
+    rgba(198, 255, 0, 0.6) 0deg,
+    rgba(198, 255, 0, 0.6) 56deg,
+    transparent 56deg
+  );
+  -webkit-mask-image: radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0.95) 8%, rgba(0, 0, 0, 0) 70%);
+  mask-image: radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0.95) 8%, rgba(0, 0, 0, 0) 70%);
+}
+
+/* Direction of travel (GPS or movement) is a narrower, sharper wedge than the compass cone */
+.user-cone.is-movement {
+  background: conic-gradient(
+    from -16deg at 50% 50%,
+    rgba(198, 255, 0, 0.75) 0deg,
+    rgba(198, 255, 0, 0.75) 32deg,
+    transparent 32deg
+  );
+}
+
+/* No GPS for a long time: dim */
+.user-marker.is-stale .user-dot {
+  opacity: 0.45;
+}
+
+/* Poor accuracy: amber ring */
+.user-marker.is-poor .user-dot {
+  box-shadow: 0 0 0 2px var(--warn, #ffb020);
+}
+
+/* ---------- Friends on the map ---------- */
+.friend-marker {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.friend-marker .friend-avatar {
+  display: block;
+  width: 28px;
+  height: 28px;
+  object-fit: cover;
+  border-radius: 50%;
+  background: var(--bg-0, #07080c);
+  border: 2px solid var(--accent, #c6ff00);
+  box-shadow: 0 0 0 2px rgba(7, 8, 12, 0.9), 0 0 18px rgba(198, 255, 0, 0.18);
+}
+
+.friend-marker .friend-label {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 6px);
+  transform: translateX(-50%);
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text, #f4f6fb);
+  background: rgba(7, 8, 12, 0.92);
+  border: 1px solid var(--line-strong, #3a4050);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.friend-marker.is-stale .friend-avatar {
+  opacity: 0.6;
+  filter: grayscale(0.75);
+  border-color: var(--text-dim, #98a0b3);
+}
+
+.friend-popup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 120px;
+  color: var(--text, #f4f6fb);
+}
+
+.friend-popup-name {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text, #f4f6fb);
+}
+
+.friend-popup-handle {
+  font-size: 11px;
+  color: var(--text-dim, #98a0b3);
+}
+
+.friend-popup-time {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent, #c6ff00);
+}
+
+/* ---------- Heading badge: which way, and where that direction comes from ---------- */
+.heading-badge {
+  position: absolute;
+  right: 68px; /* just left of the Locate button */
+  bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+  z-index: 3;
+  box-sizing: border-box;
+  height: 44px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 0 12px;
+  pointer-events: none;
+  background: rgba(7, 8, 12, 0.92);
+  border: 1px solid var(--line-strong, #3a4050);
+  border-radius: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+.heading-value {
+  font-family: var(--font-display, system-ui, sans-serif);
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  color: var(--text, #f4f6fb);
+}
+
+.heading-source {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  line-height: 1;
+  color: var(--accent, #c6ff00);
+}
+
+.heading-badge.is-none .heading-value,
+.heading-badge.is-none .heading-source {
+  color: var(--text-faint, #6b7388);
+}
+
+/* While navigating it sits under the top panel, on the right */
+.map-wrapper.is-navigating .heading-badge {
+  top: calc(var(--nav-top-h) + 10px);
+  bottom: auto;
+  right: max(12px, env(safe-area-inset-right, 0px));
+  z-index: 5;
+}
+
+/* ---------- Locate button (inside .nav-aside, so it fades away during navigation) ---------- */
+.locate-button {
+  position: absolute;
+  right: 16px;
+  bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  pointer-events: auto;
+  cursor: pointer;
+  color: var(--text-dim, #98a0b3);
+  background: rgba(7, 8, 12, 0.92);
+  border: 1px solid var(--line-strong, #3a4050);
+  border-radius: 3px;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.locate-button svg {
+  width: 22px;
+  height: 22px;
+}
+
+.locate-button:hover,
+.locate-button:focus-visible {
+  color: var(--text, #f4f6fb);
+  outline: none;
+}
+
+.locate-button.is-on {
+  color: var(--accent, #c6ff00);
+  border-color: var(--accent, #c6ff00);
+}
+
+.locate-button.is-blocked {
+  color: var(--danger, #ff3d4a);
+  border-color: var(--danger, #ff3d4a);
+}
+
+/* ---------- Bottom panel: GPS speed + Follow + End ---------- */
+.nav-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(10px, 2.5vw, 24px);
+  min-width: 0;
+}
+
+/* GPS speed. Plain white, no red ring, so it can never be mistaken for the speed LIMIT. */
+.nav-speed {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.nav-speed-value {
+  font-family: var(--font-display, system-ui, sans-serif);
+  font-size: clamp(22px, 4vh, 36px);
+  font-weight: 900;
+  font-style: italic;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.nav-speed-value.is-unknown {
+  color: var(--text-faint, #6b7388);
+}
+
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Always mounted: it grows in and out instead of popping */
+.nav-follow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 0;
+  padding: 10px 0;
+  overflow: hidden;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  cursor: pointer;
+  color: var(--accent, #c6ff00);
+  background: transparent;
+  border: 0 solid var(--accent, #c6ff00);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  transition:
+    max-width var(--nav-time, 560ms) var(--nav-ease, ease),
+    padding var(--nav-time, 560ms) var(--nav-ease, ease),
+    opacity var(--nav-fast, 380ms) ease,
+    border-width var(--nav-time, 560ms) var(--nav-ease, ease);
+}
+
+.nav-follow.is-visible {
+  max-width: 170px;
+  padding: 10px 14px;
+  opacity: 1;
+  pointer-events: auto;
+  border-width: 1px;
+}
+
+.nav-follow svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.nav-follow:hover,
+.nav-follow:focus-visible {
+  background: rgba(198, 255, 0, 0.12);
+  outline: none;
+}
+
+/* Notices in the top panel (GPS delayed, accuracy, off route...) */
+.nav-sub.is-warning {
+  color: var(--warn, #ffb020);
+}
+
+@media (max-width: 480px) {
+  .nav-follow-text,
+  .nav-speed .nav-label {
+    display: none; /* icon only on phones */
+  }
+}

@@ -1,0 +1,480 @@
+/* Navigation mode. Uses the tokens from index.css (with fallbacks).
+   All sizes are fractions of the screen (vh) or clamped, so nothing depends on one monitor.
+
+   HOW THE TRANSITION WORKS
+   Nothing is mounted or unmounted when you press Start or End. MapView only switches the
+   class `is-navigating` on .left-stack / .map-wrapper (and `is-hidden` on .nav-aside).
+   Every element below exists in BOTH states, so the browser always has a "from" and a "to"
+   and can animate between them. */
+
+:root {
+  /* Panel heights. The safe-area parts are zero except on phones with notches / home bars. */
+  --nav-top-h: calc(clamp(84px, 15vh, 150px) + env(safe-area-inset-top, 0px));
+  --nav-bottom-h: calc(clamp(76px, 11vh, 118px) + env(safe-area-inset-bottom, 0px));
+  --nav-ease: cubic-bezier(0.22, 0.8, 0.24, 1);
+  --nav-time: 560ms; /* the two black panels, the card rising, the cards closing up */
+  --nav-fast: 380ms; /* things that fade */
+  /* How far the card column rises so the selected card stops 12px above the bottom panel.
+     (The column normally sits 28px from the bottom: 28 - 12 = 16.) */
+  --nav-lift: calc(var(--nav-bottom-h) - 16px);
+}
+
+/* Short screens (a phone held sideways) get slimmer panels */
+@media (max-height: 480px) {
+  :root {
+    --nav-top-h: calc(64px + env(safe-area-inset-top, 0px));
+    --nav-bottom-h: calc(60px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* On phones the column sits 24px from the bottom instead of 28px */
+@media (max-width: 700px) {
+  :root {
+    --nav-lift: calc(var(--nav-bottom-h) - 12px);
+  }
+}
+
+/* ---------- START button (sits just above the route cards) ---------- */
+
+.start-button {
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0 0 8px;
+  padding: 16px 20px;
+  pointer-events: auto;
+  cursor: pointer;
+  border: none;
+  background: var(--accent, #c6ff00);
+  color: var(--accent-ink, #0a0c00);
+  font-family: var(--font-display, system-ui, sans-serif);
+  font-size: 20px;
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  /* Same angled corner as the route cards */
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%);
+  transition: filter 0.15s;
+}
+
+.start-button:hover,
+.start-button:focus-visible {
+  filter: brightness(1.08);
+  outline: none;
+}
+
+/* ---------- The two black panels ---------- */
+
+.nav-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 6;
+  box-sizing: border-box;
+  background: #000;
+  color: var(--text, #f4f6fb);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  will-change: transform;
+  /* Hidden when closed. The delay keeps it visible while it slides OUT. */
+  visibility: hidden;
+  transition:
+    transform var(--nav-time) var(--nav-ease),
+    visibility 0s linear var(--nav-time);
+}
+
+.nav-panel.is-open {
+  visibility: visible;
+  transform: none;
+  transition:
+    transform var(--nav-time) var(--nav-ease),
+    visibility 0s;
+}
+
+.nav-top {
+  top: 0;
+  height: var(--nav-top-h);
+  padding-top: env(safe-area-inset-top, 0px);
+  display: flex;
+  align-items: center;
+  gap: clamp(12px, 3vw, 28px);
+  transform: translateY(-100%);
+  border-bottom: 1px solid var(--line-strong, #3a4050);
+}
+
+.nav-bottom {
+  bottom: 0;
+  height: var(--nav-bottom-h);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: clamp(10px, 3vw, 28px);
+  transform: translateY(100%);
+  border-top: 1px solid var(--line-strong, #3a4050);
+}
+
+/* ----- top panel content ----- */
+
+.nav-icon {
+  flex: none;
+  width: clamp(44px, 8.5vh, 80px);
+  height: clamp(44px, 8.5vh, 80px);
+  color: var(--accent, #c6ff00);
+}
+
+.nav-icon.is-placeholder {
+  color: var(--text-faint, #6b7388);
+  opacity: 0.55;
+}
+
+.nav-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.nav-instruction {
+  flex: 1;
+  min-width: 0;
+}
+
+.nav-distance {
+  font-family: var(--font-display, system-ui, sans-serif);
+  font-size: clamp(30px, 6vh, 58px);
+  font-weight: 900;
+  font-style: italic;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.nav-text {
+  margin-top: 4px;
+  font-size: clamp(16px, 2.8vh, 26px);
+  font-weight: 700;
+  line-height: 1.15;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.nav-text.is-placeholder {
+  margin-top: 0;
+  color: var(--text-dim, #98a0b3);
+}
+
+.nav-sub {
+  margin-top: 4px;
+  font-size: clamp(13px, 2.1vh, 18px);
+  color: var(--text-faint, #6b7388);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ----- bottom panel content ----- */
+
+.nav-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--text-faint, #6b7388);
+}
+
+.nav-limit {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* UK-style speed limit sign: red ring, white centre, black number */
+.limit-sign {
+  flex: none;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  width: clamp(48px, 7.6vh, 70px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: clamp(5px, 0.9vh, 8px) solid #d6191f;
+  background: #fff;
+  color: #111;
+  font: 800 clamp(18px, 3.2vh, 30px) / 1 Arial, Helvetica, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+/* No limit known: a dim dashed ring, never an invented number */
+.limit-sign.is-unknown {
+  border: 2px dashed #4a5163;
+  background: transparent;
+  color: #8b93a6;
+}
+
+.nav-limit-text {
+  min-width: 0;
+}
+
+.nav-limit-note {
+  margin-top: 3px;
+  font-size: clamp(12px, 1.9vh, 15px);
+  color: var(--text-dim, #98a0b3);
+  white-space: nowrap;
+}
+
+/* Small and quiet, but clearly a button */
+.nav-end {
+  justify-self: center;
+  cursor: pointer;
+  padding: 10px 18px;
+  background: transparent;
+  color: var(--text-dim, #98a0b3);
+  border: 1px solid var(--line-strong, #3a4050);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.nav-end:hover,
+.nav-end:focus-visible {
+  color: var(--text, #f4f6fb);
+  border-color: var(--danger, #ff3d4a);
+  outline: none;
+}
+
+.nav-times {
+  text-align: right;
+}
+
+.nav-eta {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.nav-eta-time {
+  font-family: var(--font-display, system-ui, sans-serif);
+  font-size: clamp(24px, 4.6vh, 42px);
+  font-weight: 900;
+  font-style: italic;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.nav-remaining {
+  margin-top: 4px;
+  font-size: clamp(14px, 2.4vh, 20px);
+  font-weight: 700;
+  color: var(--accent, #c6ff00);
+  font-variant-numeric: tabular-nums;
+}
+
+/* =========================================================
+   THE NORMAL UI CHANGING INTO NAVIGATION MODE
+   Every rule here has a normal state and a `.is-navigating` state, and a
+   transition on the normal state, so it plays in BOTH directions (Start and End).
+   ========================================================= */
+
+/* 1. The card column. It keeps its normal position; only its bottom padding grows,
+      which lifts the cards up smoothly. It uses the same time and curve as the bottom
+      panel, so the card rides up just ahead of the panel and never goes behind it. */
+.left-stack {
+  transition: padding-bottom var(--nav-time) var(--nav-ease);
+}
+
+.left-stack.is-navigating {
+  padding-bottom: var(--nav-lift);
+}
+
+/* 2. The search panel fades and lifts away. It keeps its space, so nothing jumps.
+      Hidden (and unfocusable) only AFTER the fade has finished. */
+.left-stack .search-panel {
+  transition:
+    transform var(--nav-time) var(--nav-ease),
+    opacity var(--nav-fast) ease,
+    visibility 0s;
+}
+
+.left-stack.is-navigating .search-panel {
+  transform: translateY(-28px);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    transform var(--nav-time) var(--nav-ease),
+    opacity var(--nav-fast) ease,
+    visibility 0s linear var(--nav-fast);
+}
+
+/* 3. The route cards that are NOT selected fade out and then close their gap.
+      The selected card keeps its normal look and just settles into the bottom.
+      (8px = the gap between cards set in routeOptions.css. The negative bottom margin
+      cancels that gap for a collapsed card, so no empty space is left behind.)
+      max-height only needs to be bigger than a card; a card is roughly 90px tall. */
+.left-stack .route-option {
+  max-height: 160px;
+  overflow: hidden;
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    opacity var(--nav-fast) ease,
+    transform var(--nav-time) var(--nav-ease),
+    max-height var(--nav-time) var(--nav-ease),
+    padding var(--nav-time) var(--nav-ease),
+    margin var(--nav-time) var(--nav-ease),
+    border-width var(--nav-time) var(--nav-ease),
+    visibility 0s;
+}
+
+.left-stack.is-navigating .route-option:not(.is-selected) {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-top-width: 0;
+  border-bottom-width: 0;
+  margin-bottom: -8px;
+  opacity: 0;
+  transform: translateX(-18px);
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    opacity var(--nav-fast) ease,
+    transform var(--nav-time) var(--nav-ease),
+    max-height var(--nav-time) var(--nav-ease),
+    padding var(--nav-time) var(--nav-ease),
+    margin var(--nav-time) var(--nav-ease),
+    border-width var(--nav-time) var(--nav-ease),
+    visibility 0s linear var(--nav-time);
+}
+
+/* The little "3 routes" tag above the cards goes the same way */
+.left-stack .route-options-title {
+  max-height: 40px;
+  overflow: hidden;
+  transition:
+    opacity var(--nav-fast) ease,
+    max-height var(--nav-time) var(--nav-ease),
+    padding var(--nav-time) var(--nav-ease),
+    margin var(--nav-time) var(--nav-ease);
+}
+
+.left-stack.is-navigating .route-options-title {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  margin-bottom: -8px;
+  opacity: 0;
+}
+
+/* 4. The Start button folds away the same way */
+.left-stack .start-button {
+  max-height: 90px;
+  overflow: hidden;
+  transition:
+    filter 0.15s,
+    opacity var(--nav-fast) ease,
+    max-height var(--nav-time) var(--nav-ease),
+    padding var(--nav-time) var(--nav-ease),
+    margin var(--nav-time) var(--nav-ease),
+    visibility 0s;
+}
+
+.left-stack.is-navigating .start-button {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  margin-bottom: 0;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    filter 0.15s,
+    opacity var(--nav-fast) ease,
+    max-height var(--nav-time) var(--nav-ease),
+    padding var(--nav-time) var(--nav-ease),
+    margin var(--nav-time) var(--nav-ease),
+    visibility 0s linear var(--nav-time);
+}
+
+/* 5. The party button, party panel and bottom drawer live inside .nav-aside.
+      It covers the screen but lets clicks through to the map; only its three children
+      take clicks. During navigation it fades out and then becomes unreachable. */
+.nav-aside {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity var(--nav-fast) ease, visibility 0s;
+}
+
+.nav-aside > .party-button,
+.nav-aside > .party-panel {
+  pointer-events: auto;
+}
+
+.nav-aside.is-hidden {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--nav-fast) ease, visibility 0s linear var(--nav-fast);
+}
+
+/* 6. The map credit is required to stay visible, so it glides above the bottom panel */
+.map-wrapper .maplibregl-ctrl-bottom-right,
+.map-wrapper .maplibregl-ctrl-bottom-left {
+  transition: bottom var(--nav-time) var(--nav-ease);
+}
+
+.map-wrapper.is-navigating .maplibregl-ctrl-bottom-right,
+.map-wrapper.is-navigating .maplibregl-ctrl-bottom-left {
+  bottom: var(--nav-bottom-h);
+}
+
+/* Phones: slightly tighter bottom panel so the three parts fit */
+@media (max-width: 480px) {
+  .nav-limit-text {
+    display: none; /* the sign alone is enough; the caption returns on wider screens */
+  }
+}
+
+/* People whose device asks for less motion get short cross-fades instead of sliding.
+   (If your Windows "Animation effects" setting is OFF, you will see this version.) */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --nav-time: 240ms;
+    --nav-fast: 240ms;
+  }
+
+  .nav-top,
+  .nav-bottom,
+  .nav-panel.is-open {
+    transform: none;
+  }
+
+  .nav-panel {
+    opacity: 0;
+    transition:
+      opacity var(--nav-time) linear,
+      visibility 0s linear var(--nav-time);
+  }
+
+  .nav-panel.is-open {
+    opacity: 1;
+    transition: opacity var(--nav-time) linear, visibility 0s;
+  }
+
+  .left-stack.is-navigating .search-panel,
+  .left-stack.is-navigating .route-option:not(.is-selected) {
+    transform: none;
+  }
+}

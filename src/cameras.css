@@ -1,0 +1,79 @@
+/* Camera popup, in the Veode look. Uses tokens from index.css (with fallbacks). */
+
+.veode-popup .maplibregl-popup-content {
+  min-width: 190px;
+  padding: 12px 30px 12px 14px;
+  background: var(--bg-1, #0d0f15);
+  color: var(--text, #f4f6fb);
+  border: 1px solid var(--line, #262a36);
+  border-left: 3px solid var(--accent, #c6ff00);
+  border-radius: 3px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+  font-family: var(--font-body, system-ui, sans-serif);
+}
+
+.veode-popup .maplibregl-popup-tip {
+  display: none;
+}
+
+.veode-popup .maplibregl-popup-close-button {
+  padding: 2px 8px;
+  font-size: 18px;
+  color: var(--text-dim, #98a0b3);
+  background: none;
+}
+
+.veode-popup .maplibregl-popup-close-button:hover {
+  color: var(--text, #f4f6fb);
+  background: none;
+}
+
+.cam-popup.is-other {
+  margin-left: -3px;
+  padding-left: 3px;
+  border-left: 3px solid var(--warn, #ffb020);
+}
+
+.cam-title {
+  font-family: var(--font-display, system-ui, sans-serif);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--accent, #c6ff00);
+}
+
+.cam-popup.is-other .cam-title {
+  color: var(--warn, #ffb020);
+}
+
+.cam-speed {
+  margin-top: 6px;
+  font-family: var(--font-display, system-ui, sans-serif);
+  font-size: 26px;
+  font-weight: 900;
+  font-style: italic;
+  line-height: 1;
+}
+
+.cam-speed.is-unknown {
+  font-size: 15px;
+  font-style: normal;
+  font-weight: 700;
+  color: var(--text-dim, #98a0b3);
+}
+
+.cam-line {
+  margin-top: 5px;
+  font-size: 12px;
+  color: var(--text-dim, #98a0b3);
+}
+
+.cam-source {
+  margin-top: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint, #6b7388);
+}

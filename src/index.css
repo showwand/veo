@@ -1,0 +1,577 @@
+/* =========================================================
+   VEODE DESIGN SYSTEM
+   1. Tokens (colours, fonts)  2. Base  3. Map overlay
+   4. Brand  5. Search  6. Route HUD  7. Small screens
+   ========================================================= */
+
+/* ---------- 1. TOKENS: change a value here, it changes everywhere ---------- */
+:root {
+  /* Surfaces, darkest to lightest */
+  --bg-0: #07080c;
+  --bg-1: #0d0f15;
+  --bg-2: #151821;
+
+  /* Lines and borders */
+  --line: #262a36;
+  --line-strong: #3a4050;
+
+  /* Text */
+  --text: #f4f6fb;
+  --text-dim: #98a0b3;
+  --text-faint: #6b7388;
+
+  /* The ONE brand accent: used only for important information */
+  --accent: #00e1ff;
+  --accent-ink: #0a0c00; /* dark text that sits on top of the accent */
+  --accent-glow: rgba(0, 183, 255, 0.35);
+
+  /* Reserved for later features (traffic, cameras, warnings) */
+  --danger: #ff3d4a;
+  --warn: #ffb020;
+
+  /* Colour of the dark outline around the route line on the map */
+  --route-casing: #05060a;
+
+  /* Fonts. Bahnschrift ships with Windows 10+; the others are fallbacks. */
+  --font-display: "Bahnschrift", "Arial Narrow", "Roboto Condensed", "Segoe UI",
+    system-ui, sans-serif;
+  --font-body: system-ui, "Segoe UI", Roboto, sans-serif;
+
+  --radius: 3px;
+  --panel-width: 380px;
+}
+
+/* ---------- 2. BASE ---------- */
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: var(--bg-0);
+  color: var(--text);
+  font-family: var(--font-body);
+}
+
+/* ---------- 3. MAP + OVERLAY ---------- */
+.map-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.map-container {
+  width: 100%;
+  height: 100%;
+}
+
+/* Soft dark vignette at the top and bottom edges.
+   It helps the dark panels blend in, but the map centre stays fully readable.
+   pointer-events: none means it never blocks clicks or dragging. */
+.map-wrapper::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.35) 0%,
+    transparent 28%,
+    transparent 72%,
+    rgba(0, 0, 0, 0.45) 100%
+  );
+}
+
+/* Keep the (legally required) map credit visible, but match the theme */
+.maplibregl-ctrl-attrib {
+  background: rgba(7, 8, 12, 0.8) !important;
+  color: var(--text-dim) !important;
+}
+.maplibregl-ctrl-attrib a {
+  color: var(--text-dim) !important;
+}
+
+/* ---------- 4. SEARCH PANEL + BRAND ---------- */
+.search-panel {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 2;
+  width: min(var(--panel-width), calc(100% - 32px));
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background: linear-gradient(
+    180deg,
+    rgba(21, 24, 33, 0.96),
+    rgba(9, 10, 15, 0.96)
+  );
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(10px);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 2px;
+}
+
+/* A slanted accent bar, like a speed mark */
+.brand-mark {
+  width: 6px;
+  height: 22px;
+  background: var(--accent);
+  transform: skewX(-20deg);
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+
+.brand-name {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.brand-tag {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+/* ---------- 5. SEARCH BOX ---------- */
+
+/* Each box is a positioning anchor for its dropdown. The box you are
+   typing in is raised so its dropdown draws over the box below. */
+.search-box {
+  position: relative;
+  z-index: 1;
+}
+.search-box:focus-within {
+  z-index: 10;
+}
+
+.search-field {
+  display: flex;
+  align-items: stretch;
+  background: var(--bg-0);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.search-field:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(198, 255, 0, 0.12);
+}
+
+/* The "A" and "B" badges */
+.search-badge {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 900;
+  font-style: italic;
+  color: var(--accent);
+  border-right: 1px solid var(--line);
+}
+
+.search-badge.is-end {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-right-color: var(--accent);
+}
+
+.search-field input {
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 13px 12px;
+  background: transparent;
+  border: none;
+  outline: none; /* the focus glow on .search-field replaces the default outline */
+  color: var(--text);
+  font-family: inherit;
+  font-size: 16px; /* 16px stops iPhones zooming in when you tap the box */
+  font-weight: 600;
+}
+
+.search-field input::placeholder {
+  color: var(--text-faint);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Small "ENTER" reminder on the right */
+.search-hint {
+  align-self: center;
+  margin-right: 10px;
+  padding: 2px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--text-faint);
+  pointer-events: none;
+}
+
+/* Loading / error / no-results messages (float under the box) */
+.search-message {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  overflow: hidden;
+  padding: 11px 14px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.search-message.is-error {
+  border-left-color: var(--danger);
+  color: var(--text);
+}
+
+/* Thin animated bar while searching */
+.search-message.is-loading::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 40%;
+  background: var(--accent);
+  animation: scan 1s linear infinite;
+}
+
+/* Result list */
+.search-results {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.search-results button {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 11px 14px;
+  text-align: left;
+  background: none;
+  color: var(--text);
+  font-family: inherit;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  border-left: 3px solid transparent;
+  cursor: pointer;
+}
+
+.search-results li:last-child button {
+  border-bottom: none;
+}
+
+.search-location-option {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 2;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.search-location-option button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 58px;
+  padding: 10px 14px;
+  color: var(--text);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-left: 3px solid var(--accent);
+  cursor: pointer;
+}
+
+.search-location-option button:hover,
+.search-location-option button:focus-visible {
+  background: var(--bg-2);
+  outline: none;
+}
+
+.search-location-option button:disabled {
+  color: var(--text-dim);
+  cursor: wait;
+}
+
+.search-location-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.search-location-copy strong {
+  font-size: 13px;
+}
+
+.search-location-copy > span {
+  overflow: hidden;
+  color: var(--text-faint);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-location-arrow {
+  display: grid;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  color: var(--accent);
+  font-family: var(--font-display);
+  font-weight: 800;
+}
+
+.search-box:has(.search-location-option) .search-message,
+.search-box:has(.search-location-option) .search-results {
+  top: calc(100% + 70px);
+}
+
+.search-results button:hover,
+.search-results button:focus-visible {
+  background: var(--bg-2);
+  border-left-color: var(--accent);
+  outline: none;
+}
+
+.result-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.result-detail {
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- 6. ROUTE HUD ---------- */
+.route-hud {
+  position: absolute;
+  left: 16px;
+  bottom: 28px;
+  z-index: 2;
+  width: min(440px, calc(100% - 32px));
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: 1.3fr auto 1fr;
+  align-items: center;
+  gap: 18px;
+  padding: 16px 26px 16px 20px;
+  background: linear-gradient(
+    135deg,
+    rgba(21, 24, 33, 0.97),
+    rgba(7, 8, 12, 0.97)
+  );
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  /* Cuts the bottom-right corner off at an angle */
+  clip-path: polygon(
+    0 0,
+    100% 0,
+    100% calc(100% - 16px),
+    calc(100% - 16px) 100%,
+    0 100%
+  );
+}
+
+.hud-label {
+  margin-bottom: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.hud-time,
+.hud-distance {
+  display: flex;
+  align-items: baseline;
+}
+
+.hud-num {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-style: italic;
+  line-height: 0.95;
+  font-variant-numeric: tabular-nums; /* digits keep equal width, so numbers don't jiggle */
+}
+
+.hud-unit {
+  margin: 0 8px 0 4px;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* Main number: big, accent-coloured, glowing */
+.hud-main .hud-num {
+  font-size: 56px;
+  color: var(--accent);
+  text-shadow: 0 0 18px var(--accent-glow);
+}
+
+/* Secondary number: smaller, white */
+.hud-side .hud-num {
+  font-size: 34px;
+  color: var(--text);
+}
+
+.hud-divider {
+  align-self: stretch;
+  width: 1px;
+  background: linear-gradient(transparent, var(--line-strong), transparent);
+}
+
+.hud-sub {
+  margin-top: 3px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+
+/* Loading and error versions of the HUD */
+.route-hud.is-status {
+  display: block;
+}
+
+.route-hud.is-status .hud-label {
+  margin-bottom: 0;
+  color: var(--text-dim);
+}
+
+.route-hud.is-error {
+  border-left-color: var(--danger);
+}
+
+.route-hud.is-error .hud-label {
+  color: var(--danger);
+}
+
+.hud-message {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-dim);
+}
+
+.hud-scan {
+  position: relative;
+  overflow: hidden;
+  height: 3px;
+  margin-top: 12px;
+  background: var(--line);
+}
+
+.hud-scan::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 35%;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent-glow);
+  animation: scan 1s linear infinite;
+}
+
+@keyframes scan {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+
+/* Respect people who ask their device for less motion */
+@media (prefers-reduced-motion: reduce) {
+  .search-message.is-loading::after,
+  .hud-scan::after {
+    animation: none;
+  }
+}
+
+/* ---------- 7. SMALL SCREENS (a starting point for mobile later) ---------- */
+@media (max-width: 700px) {
+  .search-panel {
+    top: 12px;
+    left: 12px;
+  }
+
+  .route-hud {
+    left: 12px;
+    bottom: 24px;
+    gap: 12px;
+    padding: 12px 22px 12px 14px;
+  }
+
+  .hud-main .hud-num {
+    font-size: 42px;
+  }
+
+  .hud-side .hud-num {
+    font-size: 26px;
+  }
+}
