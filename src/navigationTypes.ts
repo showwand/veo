@@ -61,6 +61,8 @@ export const NO_LIVE_DATA: LiveNavigationData = {
 export type NavigationSnapshot = {
   route: Route;
   startedAt: number; // when Start was pressed (ms since 1970)
+  positionMeters: number | null;
+  progressFraction: number | null;
 
   maneuver: Maneuver | null;
   hasTurnData: boolean; // false if OSRM gave no steps for this route

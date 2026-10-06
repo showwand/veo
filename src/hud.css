@@ -428,6 +428,54 @@
   line-height: 1.4;
 }
 
+.pp-route-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  background: rgba(0, 225, 255, 0.06);
+  border-left: 2px solid var(--accent);
+}
+
+.pp-route-summary strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.pp-route-summary span,
+.pp-route-link label,
+.pp-route-link > span {
+  color: var(--text-dim);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.pp-route-share-button {
+  min-height: 42px;
+  color: var(--accent);
+  border-color: rgba(0, 225, 255, 0.36);
+}
+
+.pp-route-link {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 9px;
+  background: rgba(0, 0, 0, 0.24);
+  border: 1px solid var(--line);
+}
+
+.pp-route-link input {
+  width: 100%;
+  min-height: 36px;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  color: var(--text);
+  background: var(--bg-0);
+  border: 1px solid var(--line-strong);
+  font: 11px var(--font-body);
+}
+
 .pp-state.is-error {
   border-color: var(--warn, #ffb020);
   color: var(--warn, #ffb020);

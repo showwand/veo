@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Map, setWorkerUrl, type GeoJSONSource } from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -14,6 +14,7 @@ import PartyButton from "./PartyButton";
 import PartyPanel from "./PartyPanel";
 import BottomDrawer from "./BottomDrawer";
 import FriendsHub from "./FriendsHub";
+import RouteRacePanel from "./RouteRacePanel";
 import StartButton from "./StartButton";
 import InstructionPanel from "./InstructionPanel";
 import StatusPanel from "./StatusPanel";
@@ -32,6 +33,7 @@ import { useRouteOsmInfo } from "./useRouteOsmInfo";
 import { useNavigation } from "./useNavigation";
 import { useUserMarker } from "./useUserMarker";
 import { useMapFollow } from "./useMapFollow";
+import { useRouteParty } from "./useRouteParty";
 import { useFriendLocations, useLocationSharing } from "./friendLocations";
 import { hasUsableFix, useLocationStatus } from "./userLocation";
 import { requestOrientationPermission } from "./deviceOrientation";
@@ -39,6 +41,7 @@ import { createCameraLayer, type CameraLayer } from "./cameraLayer";
 import { createEndpointLayer, type EndpointLayer } from "./endpointLayer";
 import { createSpeedLimitLayer, type SpeedLimitLayer } from "./speedLimitLayer";
 import type { Route, TravelMode } from "./routing";
+import { joinSharedRoute, type SharedRoute } from "./routePartyApi";
 
 setWorkerUrl(workerUrl);
 
@@ -120,6 +123,14 @@ export default function MapView() {
   const [favouritesOpen, setFavouritesOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false); // NEW
   const [friendsHubOpen, setFriendsHubOpen] = useState(false);
+  const [routePartyId, setRoutePartyId] = useState<string | null>(null);
+  const [routeInviteCode, setRouteInviteCode] = useState<string | null>(() =>
+    typeof window === "undefined"
+      ? null
+      : new URLSearchParams(window.location.search).get("join-route")
+  );
+  const [joiningRoute, setJoiningRoute] = useState(false);
+  const [joinRouteError, setJoinRouteError] = useState<string | null>(null);
 
   // The route we actually show. If the picked id isn't in the list
   // (for example after searching somewhere new), fall back to the first route.
@@ -138,15 +149,33 @@ export default function MapView() {
   const navActive = navigation.active; // false = route selection, true = active navigation
   const navigationRoute = navigation.snapshot?.route ?? null;
   const snap = navigation.snapshot;
+  const mapRoute = navActive && navigationRoute ? navigationRoute : selectedRoute;
 
   // The location dot + direction cone (works before navigation too) and the Locate action
   const locationStatus = useLocationStatus();
   const user = useUserMarker(mapRef, mapReady);
   useLocationSharing();
-  useFriendLocations(mapRef, mapReady);
 
   // NEW: accounts. Starts Supabase's session handling once, and tells us who is signed in.
   const account = useAccountState();
+  const routeParty = useRouteParty({
+    mapRef,
+    mapReady,
+    partyId: routePartyId,
+    navigationActive: navActive,
+    snapshot: snap,
+    userId: account.activeId,
+  });
+  const routeMemberIds = useMemo(
+    () =>
+      new Set(
+        routeParty.racers
+          .filter((racer) => racer.latitude !== null && racer.longitude !== null)
+          .map((racer) => racer.userId)
+      ),
+    [routeParty.racers]
+  );
+  useFriendLocations(mapRef, mapReady, routeMemberIds);
   useEffect(() => {
     ensureAccountsStarted();
   }, []);
@@ -291,7 +320,7 @@ export default function MapView() {
     const source = map.getSource("route") as GeoJSONSource | undefined;
     if (!source) return;
 
-    if (!selectedRoute) {
+    if (!mapRoute) {
       source.setData(EMPTY_ROUTE);
       drawnRouteRef.current = null;
       return;
@@ -299,21 +328,21 @@ export default function MapView() {
 
     // Only send the line again when the route itself changed. Starting or
     // ending navigation just needs the camera to re-frame.
-    if (drawnRouteRef.current !== selectedRoute) {
+    if (drawnRouteRef.current !== mapRoute) {
       source.setData({
         type: "Feature",
         properties: {},
-        geometry: selectedRoute.geometry,
+        geometry: mapRoute.geometry,
       });
-      drawnRouteRef.current = selectedRoute;
+      drawnRouteRef.current = mapRoute;
     }
 
     // When navigation starts and we have a GPS position, the follow camera
     // takes over instead of framing the whole route. Without GPS, it frames the route as before.
     if (navActive && hasUsableFix()) return;
 
-    fitToRoute(map, selectedRoute, navActive);
-  }, [selectedRoute, mapReady, navActive]);
+    fitToRoute(map, mapRoute, navActive);
+  }, [mapRoute, mapReady, navActive]);
 
   // 3. Show the cameras for the selected route.
   // osmInfo is null while loading, on failure, or when there is no route, so
@@ -407,6 +436,35 @@ export default function MapView() {
   function handleDrawerOpenChange(open: boolean) {
     if (navActive && open) return;
     setDrawerOpen(open);
+  }
+
+  function handleJoinedRoute(shared: SharedRoute) {
+    setRoutePartyId(shared.partyId);
+    setRouteInviteCode(null);
+    setJoinRouteError(null);
+    setFriendsHubOpen(false);
+    setPartyOpen(false);
+    setFavouritesOpen(false);
+    setAccountOpen(false);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("join-route");
+    window.history.replaceState(null, "", url);
+    void requestOrientationPermission();
+    navigation.start(shared.route);
+    follow.enableFollow();
+  }
+
+  async function handleJoinRouteLink() {
+    if (!routeInviteCode || !account.activeId || joiningRoute) return;
+    setJoiningRoute(true);
+    setJoinRouteError(null);
+    const result = await joinSharedRoute(routeInviteCode);
+    setJoiningRoute(false);
+    if (!result.ok) {
+      setJoinRouteError(result.message);
+      return;
+    }
+    handleJoinedRoute(result.data);
   }
 
   // The card list is ALWAYS the full list. In navigation mode CSS fades the
@@ -517,7 +575,14 @@ export default function MapView() {
             setPartyOpen((open) => !open);
           }}
         />
-        <PartyPanel open={partyOpen} onClose={() => setPartyOpen(false)} />
+        <PartyPanel
+          open={partyOpen}
+          onClose={() => setPartyOpen(false)}
+          route={navActive ? navigationRoute : selectedRoute}
+          onShareRoute={(shared) => setRoutePartyId(shared.partyId)}
+          onStopSharing={() => setRoutePartyId(null)}
+          onJoinRoute={handleJoinedRoute}
+        />
 
         <FavouritesButton
           active={favouritesOpen}
@@ -579,6 +644,60 @@ export default function MapView() {
             setAccountOpen(true);
           }}
         />
+      )}
+
+      {navActive && routePartyId && (
+        <RouteRacePanel
+          racers={routeParty.racers}
+          error={routeParty.error}
+          userId={account.activeId}
+        />
+      )}
+
+      {routeInviteCode && !navActive && !accountOpen && (
+        <section className="route-join-prompt" role="dialog" aria-modal="true" aria-label="Join shared route">
+          <div className="route-join-card">
+            <div className="route-join-kicker">VEODE ROUTE LINK</div>
+            <h2>JOIN THE RUN</h2>
+            <p>
+              Join this route to navigate alongside the party. Their standings and live map positions
+              are visible while each member has location sharing enabled.
+            </p>
+            {joinRouteError && <div className="route-join-error" role="alert">{joinRouteError}</div>}
+            {!account.activeId ? (
+              <button
+                type="button"
+                className="route-join-primary"
+                onClick={() => {
+                  setAccountOpen(true);
+                }}
+              >
+                SIGN IN TO JOIN
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="route-join-primary"
+                disabled={joiningRoute}
+                onClick={() => void handleJoinRouteLink()}
+              >
+                {joiningRoute ? "CONNECTING…" : "JOIN ROUTE"}
+              </button>
+            )}
+            <button
+              type="button"
+              className="route-join-cancel"
+              onClick={() => {
+                setRouteInviteCode(null);
+                const url = new URL(window.location.href);
+                url.searchParams.delete("join-route");
+                window.history.replaceState(null, "", url);
+              }}
+            >
+              NOT NOW
+            </button>
+          </div>
+        </section>
       )}
 
       {/* Which way Veode thinks you face, and where that comes from */}

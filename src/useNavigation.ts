@@ -61,6 +61,8 @@ function buildSnapshot(
   return {
     route,
     startedAt,
+    positionMeters: live.positionMeters,
+    progressFraction: live.progressFraction,
     maneuver: live.maneuver,
     hasTurnData: (route.steps?.length ?? 0) > 0,
     currentSpeedMph: live.currentSpeedMph,

@@ -251,7 +251,11 @@ export function useLocationSharing() {
   }, [enabled, activeId]);
 }
 
-export function useFriendLocations(mapRef: RefObject<MapLibreMap | null>, mapReady: boolean) {
+export function useFriendLocations(
+  mapRef: RefObject<MapLibreMap | null>,
+  mapReady: boolean,
+  excludedFriendIds: ReadonlySet<string> = new Set()
+) {
   const account = useAccountState();
   const markersRef = useRef<globalThis.Map<string, MarkerEntry>>(new globalThis.Map());
   const [friends, setFriends] = useState<FriendLocation[]>([]);
@@ -323,7 +327,7 @@ export function useFriendLocations(mapRef: RefObject<MapLibreMap | null>, mapRea
         });
       }
 
-      setFriends(nextFriends);
+      setFriends(nextFriends.filter((friend) => !excludedFriendIds.has(friend.id)));
     }
 
     void refresh();
@@ -342,7 +346,7 @@ export function useFriendLocations(mapRef: RefObject<MapLibreMap | null>, mapRea
       cancelled = true;
       channel.unsubscribe();
     };
-  }, [account.activeId, mapReady, mapRef]);
+  }, [account.activeId, excludedFriendIds, mapReady, mapRef]);
 
   useEffect(() => {
     const map = mapRef.current;

@@ -9,13 +9,31 @@ import {
   respondToPartyInvite,
   type PartyEntry,
 } from "./partyApi";
+import type { Route } from "./routing";
+import {
+  acceptPartyRouteInvite,
+  clearPartySharedRoute,
+  sharePartyRoute,
+  type SharedRoute,
+} from "./routePartyApi";
 
 type Props = {
   open: boolean;
   onClose: () => void;
+  route: Route | null;
+  onShareRoute: (shared: SharedRoute) => void;
+  onStopSharing: () => void;
+  onJoinRoute: (shared: SharedRoute) => void;
 };
 
-export default function PartyPanel({ open, onClose }: Props) {
+export default function PartyPanel({
+  open,
+  onClose,
+  route,
+  onShareRoute,
+  onStopSharing,
+  onJoinRoute,
+}: Props) {
   const account = useAccountState();
   const [friends, setFriends] = useState<Friend[]>([]);
   const [partyEntries, setPartyEntries] = useState<PartyEntry[]>([]);
@@ -25,6 +43,10 @@ export default function PartyPanel({ open, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
+  const [sharedRoute, setSharedRoute] = useState<SharedRoute | null>(null);
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareError, setShareError] = useState<string | null>(null);
+  const [copyNotice, setCopyNotice] = useState<string | null>(null);
 
   // Pressing Escape closes the panel
   useEffect(() => {
@@ -109,6 +131,66 @@ export default function PartyPanel({ open, onClose }: Props) {
     setBusyId(null);
   }
 
+  async function handleShareRoute() {
+    if (!route || route.mode === "public-transport") return;
+    setShareBusy(true);
+    setShareError(null);
+    setCopyNotice(null);
+    const result = await sharePartyRoute(route);
+    setShareBusy(false);
+    if (!result.ok) {
+      setShareError(result.message);
+      return;
+    }
+    setSharedRoute(result.data);
+    onShareRoute(result.data);
+    setNotice("Route is ready to share with your crew.");
+    setReload((value) => value + 1);
+  }
+
+  async function handleCopyRouteLink() {
+    if (!sharedRoute) return;
+    const link = new URL(window.location.href);
+    link.search = "";
+    link.searchParams.set("join-route", sharedRoute.shareCode);
+    try {
+      await navigator.clipboard.writeText(link.toString());
+      setCopyNotice("Route link copied.");
+    } catch (error) {
+      console.warn("Veode route sharing: clipboard access failed", error);
+      setCopyNotice("Copy the route link from the field below.");
+    }
+  }
+
+  async function handleJoinRoute(partyId: string) {
+    setBusyId(partyId);
+    setError(null);
+    const result = await acceptPartyRouteInvite(partyId);
+    setBusyId(null);
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
+    onJoinRoute(result.data);
+  }
+
+  async function handleStopSharing() {
+    if (!sharedRoute) return;
+    setShareBusy(true);
+    setShareError(null);
+    const result = await clearPartySharedRoute(sharedRoute.partyId);
+    setShareBusy(false);
+    if (!result.ok) {
+      setShareError(result.message);
+      return;
+    }
+    setSharedRoute(null);
+    setCopyNotice(null);
+    onStopSharing();
+    setNotice("The public route link has been revoked.");
+    setReload((value) => value + 1);
+  }
+
   const hasCurrentAccountData = account.activeId !== null && loadedForId === account.activeId;
   const visibleEntries = hasCurrentAccountData ? partyEntries : [];
   const visibleFriends = hasCurrentAccountData ? friends : [];
@@ -156,6 +238,60 @@ export default function PartyPanel({ open, onClose }: Props) {
         {account.activeId && error && <div className="pp-state is-error" role="alert">{error}</div>}
         {account.activeId && notice && <div className="pp-state is-notice" role="status">{notice}</div>}
 
+        <section className="pp-section pp-route-share">
+          <div className="pp-section-title">Share a route</div>
+          {!route ? (
+            <div className="pp-state">Choose a route first, then invite your crew to join it.</div>
+          ) : route.mode === "public-transport" ? (
+            <div className="pp-state">Route party progress currently supports driving and walking routes.</div>
+          ) : (
+            <>
+              <div className="pp-route-summary">
+                <strong>{route.name}</strong>
+                <span>{Math.ceil(route.durationSeconds / 60)} min planned</span>
+              </div>
+              <button
+                type="button"
+                className="pp-request pp-route-share-button"
+                disabled={!account.activeId || shareBusy}
+                onClick={() => void handleShareRoute()}
+              >
+                {shareBusy ? "Preparing route…" : sharedRoute ? "Refresh route link" : "Share this route"}
+              </button>
+              {!account.activeId && <div className="pp-state">Sign in to share a route.</div>}
+              {shareError && <div className="pp-state is-error" role="alert">{shareError}</div>}
+              {sharedRoute && (
+                <div className="pp-route-link">
+                  <label htmlFor="pp-route-link">Anyone with this link can join:</label>
+                  <input
+                    id="pp-route-link"
+                    value={(() => {
+                      const link = new URL(window.location.href);
+                      link.search = "";
+                      link.searchParams.set("join-route", sharedRoute.shareCode);
+                      return link.toString();
+                    })()}
+                    readOnly
+                    onFocus={(event) => event.currentTarget.select()}
+                  />
+                  <button type="button" className="pp-request" onClick={() => void handleCopyRouteLink()}>
+                    Copy route link
+                  </button>
+                  <button
+                    type="button"
+                    className="pp-request pp-route-revoke"
+                    disabled={shareBusy}
+                    onClick={() => void handleStopSharing()}
+                  >
+                    {shareBusy ? "Working…" : "Stop sharing route"}
+                  </button>
+                  {copyNotice && <span role="status">{copyNotice}</span>}
+                </div>
+              )}
+            </>
+          )}
+        </section>
+
         {incomingInvites.length > 0 && (
           <section className="pp-section">
             <div className="pp-section-title">Invitations</div>
@@ -175,6 +311,14 @@ export default function PartyPanel({ open, onClose }: Props) {
                       onClick={() => void handleInviteResponse(entry, true)}
                     >
                       Accept
+                    </button>
+                    <button
+                      type="button"
+                      className="pp-request"
+                      disabled={busyId === entry.partyId}
+                      onClick={() => void handleJoinRoute(entry.partyId)}
+                    >
+                      {busyId === entry.partyId ? "Joining…" : "Join route"}
                     </button>
                     <button
                       type="button"
