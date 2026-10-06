@@ -20,12 +20,26 @@ export default function StatusPanel({ open, snapshot, followUser, onFollow, onEn
 
   // The car's own GPS speed. Completely separate from the OSM limit above.
   const speed = snapshot?.currentSpeedMph ?? null;
+  const routeDistanceMeters = snapshot?.route.distanceMeters ?? null;
+  const routeDistance =
+    routeDistanceMeters === null
+      ? null
+      : `${(routeDistanceMeters / 1000).toFixed(1)} km · ${(routeDistanceMeters / 1609.344).toFixed(1)} mi`;
 
   return (
     <section
       className={open ? "nav-panel nav-bottom is-open" : "nav-panel nav-bottom"}
       aria-label="Journey information"
     >
+      <div className="nav-route-summary">
+        <strong className="nav-route-name">{snapshot?.route.name ?? "Route"}</strong>
+        <span className="nav-route-meta">
+          {snapshot ? `${snapshot.remainingMinutes} min left` : ""}
+          {snapshot && routeDistance ? " · " : ""}
+          {routeDistance ?? ""}
+        </span>
+      </div>
+
       <div className="nav-limit">
         <div className={limit === null ? "limit-sign is-unknown" : "limit-sign"}>
           {limit === null ? "--" : limit}

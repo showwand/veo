@@ -165,57 +165,6 @@
   color: var(--accent, #c6ff00);
 }
 
-/* ---------- Heading badge: which way, and where that direction comes from ---------- */
-.heading-badge {
-  position: absolute;
-  right: 68px; /* just left of the Locate button */
-  bottom: calc(56px + env(safe-area-inset-bottom, 0px));
-  z-index: 3;
-  box-sizing: border-box;
-  height: 44px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 2px;
-  padding: 0 12px;
-  pointer-events: none;
-  background: rgba(7, 8, 12, 0.92);
-  border: 1px solid var(--line-strong, #3a4050);
-  border-radius: 3px;
-  font-variant-numeric: tabular-nums;
-}
-
-.heading-value {
-  font-family: var(--font-display, system-ui, sans-serif);
-  font-size: 15px;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  line-height: 1;
-  color: var(--text, #f4f6fb);
-}
-
-.heading-source {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  line-height: 1;
-  color: var(--accent, #c6ff00);
-}
-
-.heading-badge.is-none .heading-value,
-.heading-badge.is-none .heading-source {
-  color: var(--text-faint, #6b7388);
-}
-
-/* While navigating it sits under the top panel, on the right */
-.map-wrapper.is-navigating .heading-badge {
-  top: calc(var(--nav-top-h) + 10px);
-  bottom: auto;
-  right: max(12px, env(safe-area-inset-right, 0px));
-  z-index: 5;
-}
-
 /* ---------- Locate button (inside .nav-aside, so it fades away during navigation) ---------- */
 .locate-button {
   position: absolute;

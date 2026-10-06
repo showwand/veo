@@ -137,9 +137,10 @@ export function useRouteParty({
     for (const racer of racers) {
       if (racer.latitude === null || racer.longitude === null) continue;
       const existing = markersRef.current.get(racer.userId);
-      const entry = existing ?? createRaceMarker(map, racer);
+      const entry =
+        existing ?? createRaceMarker(map, racer, [racer.longitude, racer.latitude]);
       updateRaceMarker(entry, racer, racer.userId === userId);
-      entry.marker.setLngLat([racer.longitude, racer.latitude]);
+      if (existing) entry.marker.setLngLat([racer.longitude, racer.latitude]);
       next.set(racer.userId, entry);
     }
     markersRef.current.forEach((entry, id) => {
@@ -170,7 +171,11 @@ export function useRouteParty({
   return { racers: orderedRacers, error };
 }
 
-function createRaceMarker(map: MapLibreMap, racer: PartyRacer): RaceMarker {
+function createRaceMarker(
+  map: MapLibreMap,
+  racer: PartyRacer,
+  coordinates: [longitude: number, latitude: number]
+): RaceMarker {
   const element = document.createElement("div");
   element.className = "route-racer-marker";
   const image = document.createElement("img");
@@ -180,7 +185,9 @@ function createRaceMarker(map: MapLibreMap, racer: PartyRacer): RaceMarker {
   const label = document.createElement("span");
   label.textContent = racer.username;
   element.append(image, label);
-  const marker = new Marker({ element, anchor: "bottom" }).addTo(map);
+  const marker = new Marker({ element, anchor: "bottom" })
+    .setLngLat(coordinates)
+    .addTo(map);
   return { marker, element };
 }
 

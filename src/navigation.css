@@ -3,7 +3,7 @@
 
    HOW THE TRANSITION WORKS
    Nothing is mounted or unmounted when you press Start or End. MapView only switches the
-   class `is-navigating` on .left-stack / .map-wrapper (and `is-hidden` on .nav-aside).
+   class `is-navigating` on .left-stack / .map-wrapper / .nav-aside.
    Every element below exists in BOTH states, so the browser always has a "from" and a "to"
    and can animate between them. */
 
@@ -113,6 +113,10 @@
   gap: clamp(10px, 3vw, 28px);
   transform: translateY(100%);
   border-top: 1px solid var(--line-strong, #3a4050);
+}
+
+.nav-route-summary {
+  display: none;
 }
 
 /* ----- top panel content ----- */
@@ -406,9 +410,8 @@
     visibility 0s linear var(--nav-time);
 }
 
-/* 5. The party button, party panel and bottom drawer live inside .nav-aside.
-      It covers the screen but lets clicks through to the map; only its three children
-      take clicks. During navigation it fades out and then becomes unreachable. */
+/* 5. Map actions live inside .nav-aside. It covers the screen but lets clicks through;
+      during navigation only Party remains visible and interactive. */
 .nav-aside {
   position: absolute;
   inset: 0;
@@ -423,10 +426,19 @@
   pointer-events: auto;
 }
 
-.nav-aside.is-hidden {
-  opacity: 0;
+.nav-aside.is-navigating {
+  visibility: visible;
+  opacity: 1;
+}
+
+.nav-aside.is-navigating > :not(.party-button):not(.party-panel) {
   visibility: hidden;
-  transition: opacity var(--nav-fast) ease, visibility 0s linear var(--nav-fast);
+}
+
+.nav-aside.is-navigating > .party-button {
+  top: calc(var(--nav-top-h) + 8px);
+  right: max(12px, env(safe-area-inset-right, 0px));
+  z-index: 8;
 }
 
 /* 6. The map credit is required to stay visible, so it glides above the bottom panel */
@@ -444,6 +456,145 @@
 @media (max-width: 480px) {
   .nav-limit-text {
     display: none; /* the sign alone is enough; the caption returns on wider screens */
+  }
+}
+
+@media (max-width: 700px) {
+  :root {
+    --nav-bottom-h: calc(96px + env(safe-area-inset-bottom, 0px));
+    --nav-lift: 0px;
+  }
+
+  .left-stack.is-navigating {
+    padding-bottom: 0;
+  }
+
+  .left-stack.is-navigating .route-options {
+    display: none;
+  }
+
+  .nav-bottom {
+    grid-template-columns: minmax(38px, 0.7fr) minmax(72px, 1.2fr) minmax(68px, 0.9fr);
+    grid-template-rows: 25px minmax(0, 1fr);
+    column-gap: 8px;
+    row-gap: 3px;
+    align-items: center;
+    padding: 5px max(10px, env(safe-area-inset-left, 0px))
+      env(safe-area-inset-bottom, 0px) max(10px, env(safe-area-inset-right, 0px));
+  }
+
+  .nav-route-summary {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    overflow: hidden;
+    border-bottom: 1px solid var(--line-strong, #3a4050);
+  }
+
+  .nav-route-name {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--accent, #c6ff00);
+    font: 900 10px var(--font-display, system-ui, sans-serif);
+    letter-spacing: 0.12em;
+    text-overflow: ellipsis;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .nav-route-meta {
+    flex: none;
+    color: var(--text-dim, #98a0b3);
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .nav-limit {
+    grid-column: 1;
+    grid-row: 2;
+    justify-content: flex-start;
+    gap: 0;
+  }
+
+  .nav-limit-text {
+    display: none;
+  }
+
+  .limit-sign {
+    width: 32px;
+    border-width: 4px;
+    font-size: 15px;
+  }
+
+  .limit-sign.is-unknown {
+    border-width: 1px;
+  }
+
+  .nav-bottom .nav-center {
+    grid-column: 2;
+    grid-row: 2;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  .nav-bottom .nav-speed-value {
+    font-size: 17px;
+  }
+
+  .nav-bottom .nav-actions {
+    gap: 4px;
+  }
+
+  .nav-end {
+    min-height: 34px;
+    padding: 6px 9px;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+  }
+
+  .nav-bottom .nav-follow.is-visible {
+    max-width: 42px;
+    padding: 8px;
+  }
+
+  .nav-times {
+    grid-column: 3;
+    grid-row: 2;
+  }
+
+  .nav-eta {
+    gap: 4px;
+  }
+
+  .nav-label {
+    font-size: 8px;
+    letter-spacing: 0.12em;
+  }
+
+  .nav-eta-time {
+    font-size: 16px;
+  }
+
+  .nav-remaining {
+    margin-top: 1px;
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 700px) and (max-height: 480px) {
+  :root {
+    --nav-bottom-h: calc(82px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .nav-bottom {
+    grid-template-rows: 21px minmax(0, 1fr);
+    row-gap: 1px;
+    padding-top: 3px;
   }
 }
 

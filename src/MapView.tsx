@@ -19,7 +19,6 @@ import StartButton from "./StartButton";
 import InstructionPanel from "./InstructionPanel";
 import StatusPanel from "./StatusPanel";
 import TargetIcon from "./TargetIcon";
-import HeadingBadge from "./HeadingBadge";
 import FavouritesButton from "./FavouritesButton";
 import FavouritesPanel from "./FavouritesPanel";
 import AccountButton from "./AccountButton"; // NEW
@@ -60,6 +59,14 @@ function getPadding(map: Map, navigating = false) {
   const { clientWidth, clientHeight } = map.getContainer();
 
   if (navigating) {
+    if (clientWidth <= 700) {
+      return {
+        top: Math.round(clientHeight * 0.18),
+        bottom: Math.round(clientHeight * 0.18),
+        left: 24,
+        right: 24,
+      };
+    }
     return {
       top: Math.round(clientHeight * 0.2),
       bottom: Math.round(clientHeight * 0.42), // the bottom panel plus the route card
@@ -560,12 +567,10 @@ export default function MapView() {
         )}
       </div>
 
-      {/* The top-right buttons (Favourites | Party | Account), their panels, the drawer and the
-          Locate button stay mounted inside .nav-aside, which fades out during navigation.
-          CHANGED: opening one panel closes the other two. */}
+      {/* The party control stays available during navigation; other map actions fold away.
+          Opening one panel closes the other panels. */}
       <div
-        className={navActive ? "nav-aside is-hidden" : "nav-aside"}
-        aria-hidden={navActive}
+        className={navActive ? "nav-aside is-navigating" : "nav-aside"}
       >
         <PartyButton
           active={partyOpen}
@@ -699,9 +704,6 @@ export default function MapView() {
           </div>
         </section>
       )}
-
-      {/* Which way Veode thinks you face, and where that comes from */}
-      <HeadingBadge />
 
       {/* The two black navigation panels. They slide in together. */}
       <InstructionPanel

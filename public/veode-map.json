@@ -7,7 +7,7 @@
       "url": "https://tiles.openfreemap.org/planet"
     }
   },
-  "sprite": "https://tiles.openfreemap.org/sprites/ofm_f512",
+  "sprite": "https://tiles.openfreemap.org/sprites/ofm_f384/ofm",
   "glyphs": "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
 
   "layers": [
@@ -361,6 +361,7 @@
       "source": "openmaptiles",
       "source-layer": "place",
       "layout": {
+        "text-font": ["Noto Sans Regular"],
         "text-field": ["get", "name:en"],
         "text-size": [
           "interpolate",
@@ -395,6 +396,7 @@
       "source-layer": "transportation_name",
       "layout": {
         "symbol-placement": "line",
+        "text-font": ["Noto Sans Regular"],
         "text-field": ["get", "name:en"],
         "text-size": [
           "interpolate",

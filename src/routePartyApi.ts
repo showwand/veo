@@ -194,16 +194,23 @@ export async function sharePartyRoute(route: Route): Promise<ApiResult<SharedRou
       const partyId = asString(row.party_id);
       const shareCode = asString(row.share_code);
       if (partyId === null || shareCode === null) return null;
-      return {
-        party_id: partyId,
-        owner_id: row.owner_id,
-        share_code: shareCode,
-        route_data: shareableRoute,
-      };
+      return { partyId, shareCode };
     })[0];
-    const shared = parsed ? parseSharedRouteRow(parsed) : null;
-    if (!shared) return { ok: false, message: "The server did not confirm the shared route." };
-    return { ok: true, data: shared };
+    if (!parsed) {
+      return { ok: false, message: "The server did not return a party and route link." };
+    }
+
+    const confirmed = await getPartyRoute(parsed.partyId);
+    if (!confirmed.ok) {
+      return {
+        ok: false,
+        message: `The route link was created, but its saved route could not be loaded: ${confirmed.message}`,
+      };
+    }
+    if (confirmed.data.shareCode !== parsed.shareCode) {
+      return { ok: false, message: "The server returned a different route link than expected." };
+    }
+    return confirmed;
   } catch (error) {
     return { ok: false, message: describeError(error) };
   }
