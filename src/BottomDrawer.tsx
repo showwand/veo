@@ -8,6 +8,7 @@ type Mode = "map" | "friends";
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onOpenFriends: () => void;
 };
 
 // Custom graphic for MAP: a faint street grid, a route and a heading arrow
@@ -38,7 +39,7 @@ function FriendsArt() {
   );
 }
 
-export default function BottomDrawer({ open, onOpenChange }: Props) {
+export default function BottomDrawer({ open, onOpenChange, onOpenFriends }: Props) {
   const [mode, setMode] = useState<Mode>("map");
 
   // After the drawer is closed, the mouse must leave the bottom zone once
@@ -152,7 +153,11 @@ export default function BottomDrawer({ open, onOpenChange }: Props) {
             type="button"
             className={mode === "friends" ? "mode-tile is-active" : "mode-tile"}
             aria-pressed={mode === "friends"}
-            onClick={() => setMode("friends")}
+            onClick={() => {
+              setMode("friends");
+              close();
+              onOpenFriends();
+            }}
           >
             <FriendsArt />
             <span className="mode-text">
@@ -162,23 +167,9 @@ export default function BottomDrawer({ open, onOpenChange }: Props) {
           </button>
         </div>
 
-        <div
-          className={
-            mode === "friends" ? "drawer-status is-soon" : "drawer-status is-ok"
-          }
-          role="status"
-        >
-          {mode === "friends" ? (
-            <>
-              <span className="drawer-status-tag">Coming soon</span>
-              <span>Live friend locations and group drives are on the way.</span>
-            </>
-          ) : (
-            <>
-              <span className="drawer-status-tag">Active</span>
-              <span>Map mode</span>
-            </>
-          )}
+        <div className="drawer-status is-ok" role="status">
+          <span className="drawer-status-tag">Ready</span>
+          <span>{mode === "friends" ? "Friends hub" : "Map mode"}</span>
         </div>
       </div>
     </div>

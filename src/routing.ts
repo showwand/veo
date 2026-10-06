@@ -5,9 +5,12 @@ import {
 } from "./routeCandidates";
 import { classifyRoutes } from "./routeScoring";
 import type { RouteStep } from "./osrmSteps";
+import { fetchWalkingRoute } from "./walkingRouting";
+import { fetchPublicTransportRoutes } from "./transitRouting";
 
 // A point on the map. Your SearchResult objects already fit this shape.
 export type Point = { lat: number; lon: number };
+export type TravelMode = "car" | "public-transport" | "walking";
 
 // The line OSRM gives us, in GeoJSON format: a list of [longitude, latitude] pairs
 export type RouteGeometry = {
@@ -30,9 +33,11 @@ export type Route = {
   id: string; // unique, e.g. "fastest"
   name: string; // what the user sees, e.g. "Fastest"
   type: RouteType;
+  mode: TravelMode;
   geometry: RouteGeometry;
-  distanceMeters: number;
+  distanceMeters: number | null;
   durationSeconds: number;
+  details?: string | null;
   // [west, south, east, north] - a box around the whole route, used to zoom the map
   bounds: [number, number, number, number];
   // OSRM's turn-by-turn steps for this route. Empty if OSRM gave none.
@@ -59,8 +64,14 @@ function withSteps(routes: Route[], candidates: Candidate[]): Route[] {
 export async function fetchRouteOptions(
   start: Point,
   end: Point,
+  mode: TravelMode,
   signal: AbortSignal
 ): Promise<Route[]> {
+  if (mode === "walking") return fetchWalkingRoute(start, end, signal);
+  if (mode === "public-transport") {
+    return fetchPublicTransportRoutes(start, end, signal);
+  }
+
   // Round 0: the normal request. If this fails there is no route at all.
   const base = await fetchBaseCandidates(start, end, signal);
   const fastestGuess = base[0]; // OSRM puts its quickest route first

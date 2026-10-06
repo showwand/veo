@@ -109,6 +109,7 @@ function toRoute(chosen: Chosen, alternativeNumber: number): Route {
     id,
     name,
     type: chosen.type,
+    mode: "car",
     geometry: candidate.geometry,
     distanceMeters: candidate.distanceMeters,
     durationSeconds: candidate.durationSeconds,

@@ -1,11 +1,13 @@
 import "./routeOptions.css";
-import type { Route } from "./routing";
+import type { Route, TravelMode } from "./routing";
 import type { RouteStatus } from "./useRouteOptions";
 
 type Props = {
   routes: Route[];
   selectedId: string | null; // which route is currently chosen
   status: RouteStatus;
+  mode: TravelMode;
+  error: string | null;
   onSelect: (routeId: string) => void;
 };
 
@@ -19,6 +21,8 @@ export default function RouteOptions({
   routes,
   selectedId,
   status,
+  mode,
+  error,
   onSelect,
 }: Props) {
   if (status === "idle") return null;
@@ -37,8 +41,8 @@ export default function RouteOptions({
       <section className="route-hud is-status is-error">
         <div className="hud-label">No route</div>
         <div className="hud-message">
-          There may be no driving route between these places, or the routing
-          service is unavailable.
+          {error ??
+            `There may be no ${mode === "car" ? "driving" : mode === "walking" ? "walking" : "public transport"} route between these places.`}
         </div>
       </section>
     );
@@ -47,13 +51,17 @@ export default function RouteOptions({
   return (
     <section className="route-options" aria-label="Route options">
       <div className="route-options-title">
-        {routes.length === 1 ? "1 route" : `${routes.length} routes`}
+        {mode === "car"
+          ? `${routes.length} ${routes.length === 1 ? "car route" : "car routes"}`
+          : mode === "walking"
+            ? "Walking route"
+            : `${routes.length} ${routes.length === 1 ? "journey" : "journeys"}`}
       </div>
 
       {routes.map((route) => {
         const { hours, minutes } = splitDuration(route.durationSeconds);
-        const km = route.distanceMeters / 1000;
-        const miles = km * 0.621371;
+        const km = route.distanceMeters === null ? null : route.distanceMeters / 1000;
+        const miles = km === null ? null : km * 0.621371;
         const isSelected = route.id === selectedId;
 
         return (
@@ -83,12 +91,28 @@ export default function RouteOptions({
             </span>
 
             <span className="option-side">
-              <span className="hud-label">Distance</span>
-              <span className="option-distance">
-                <span className="hud-num">{km.toFixed(1)}</span>
-                <span className="hud-unit">km</span>
-              </span>
-              <span className="hud-sub">{miles.toFixed(1)} mi</span>
+              {route.details ? (
+                <>
+                  <span className="hud-label">
+                    {mode === "public-transport" ? "Transport" : "Route source"}
+                  </span>
+                  <span className="option-details">{route.details}</span>
+                </>
+              ) : km !== null && miles !== null ? (
+                <>
+                  <span className="hud-label">Distance</span>
+                  <span className="option-distance">
+                    <span className="hud-num">{km.toFixed(1)}</span>
+                    <span className="hud-unit">km</span>
+                  </span>
+                  <span className="hud-sub">{miles.toFixed(1)} mi</span>
+                </>
+              ) : null}
+              {km !== null && miles !== null && route.details && (
+                <span className="hud-sub">
+                  {km.toFixed(1)} km · {miles.toFixed(1)} mi
+                </span>
+              )}
             </span>
           </button>
         );

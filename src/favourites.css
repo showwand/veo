@@ -381,9 +381,10 @@
 /* The panel sits just below the button row; on narrow screens it uses the full width */
 @media (max-width: 700px) {
   .favourites-panel {
-    top: 68px;
-    right: 12px;
-    width: calc(100% - 24px);
+    top: max(68px, calc(env(safe-area-inset-top, 0px) + 56px));
+    right: max(12px, env(safe-area-inset-right, 0px));
+    left: max(12px, env(safe-area-inset-left, 0px));
+    width: auto;
   }
 }
 

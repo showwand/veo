@@ -86,6 +86,13 @@
   color: var(--text);
 }
 
+.option-details {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
 .route-option:hover,
 .route-option:focus-visible {
   background: var(--bg-2);
@@ -129,5 +136,26 @@
 
   .option-side .hud-num {
     font-size: 22px;
+  }
+
+  .route-option {
+    min-height: 76px;
+  }
+}
+
+@media (max-width: 380px) {
+  .route-option {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    padding-right: 16px;
+  }
+
+  .option-time .hud-num {
+    font-size: 30px;
+  }
+
+  .option-details {
+    max-width: 125px;
+    font-size: 12px;
   }
 }

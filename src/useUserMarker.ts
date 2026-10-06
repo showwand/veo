@@ -19,7 +19,8 @@ import { getHeadingInfo, subscribeHeading, type HeadingInfo } from "./heading";
 const CENTER_ZOOM = 14.5;
 
 // Draws the location dot and the direction cone. The marker sits at EXACTLY the reported
-// coordinate: no smoothing, no snapping. The map itself is never rotated.
+// coordinate: no smoothing, no snapping. In navigation mode the map may rotate to keep
+// the user's heading toward the top of the screen.
 function createUserMarker(map: Map) {
   const root = document.createElement("div");
   root.className = "user-marker";

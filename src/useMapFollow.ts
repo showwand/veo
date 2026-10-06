@@ -1,5 +1,6 @@
 import { useEffect, useState, type RefObject } from "react";
 import type { Map } from "maplibre-gl";
+import { getHeadingInfo } from "./heading";
 import { MAX_USABLE_ACCURACY_M, getLocationState, subscribeLocation } from "./userLocation";
 
 const FOLLOW_ZOOM = 16; // used only if the map is zoomed far out when following begins
@@ -59,7 +60,9 @@ export function useMapFollow({ mapRef, mapReady, active, getInsets }: Options) {
 
       const target: [number, number] = [fix.lon, fix.lat];
       const inset = getInsets(m);
-      // Put the car in the middle of the visible gap between the two panels
+      // Put the car in the middle of the visible gap between the two panels.
+      // Navigation keeps the camera heading-up so the user's direction of travel
+      // stays toward the top of the screen.
       const offset: [number, number] = [0, (inset.top - inset.bottom) / 2];
 
       const { clientWidth, clientHeight } = m.getContainer();
@@ -67,14 +70,29 @@ export function useMapFollow({ mapRef, mapReady, active, getInsets }: Options) {
       const now = m.project(target);
       const away = Math.hypot(now.x - wanted.x, now.y - wanted.y);
 
-      if (!first && away < DEADBAND_PX) return;
+      const heading = getHeadingInfo();
+      const cameraBearing = heading.degrees ?? null;
+
+      if (!first && away < DEADBAND_PX) {
+        if (cameraBearing !== null) {
+          // Keep the heading-up view aligned even when the user is almost stationary.
+          m.easeTo({
+            bearing: cameraBearing,
+            duration: STEADY_MOVE_MS,
+            easing: linear,
+            essential: true,
+          });
+        }
+        return;
+      }
       const teleport = !first && away > TELEPORT_SCREENS * Math.max(clientWidth, clientHeight);
 
-      // The user's own zoom is respected; only a far-out map is brought in
+      // The user's own zoom is respected; only a far-out map is brought in.
       const zoomIn = first && m.getZoom() < MIN_FOLLOW_ZOOM;
       m.easeTo({
         center: target,
         offset,
+        ...(cameraBearing !== null ? { bearing: cameraBearing } : {}),
         ...(zoomIn ? { zoom: FOLLOW_ZOOM } : {}),
         duration: teleport ? 0 : first ? FIRST_MOVE_MS : STEADY_MOVE_MS,
         easing: first ? easeInOut : linear,

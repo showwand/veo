@@ -443,7 +443,9 @@ function cacheKey(route: Route): string {
   const last = coords.length - 1;
   const picks = [0, 0.25, 0.5, 0.75, 1].map((f) => coords[Math.round(last * f)]);
   const parts = picks.map((c) => (c ? `${c[0].toFixed(5)},${c[1].toFixed(5)}` : "-"));
-  return `${coords.length}|${Math.round(route.distanceMeters)}|${parts.join("|")}`;
+  const distanceKey =
+    route.distanceMeters === null ? "unknown-distance" : String(Math.round(route.distanceMeters));
+  return `${coords.length}|${distanceKey}|${parts.join("|")}`;
 }
 
 export function getCachedRouteOsmInfo(route: Route): RouteOsmInfo | null {

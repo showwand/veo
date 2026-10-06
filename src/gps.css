@@ -219,7 +219,7 @@
 /* ---------- Locate button (inside .nav-aside, so it fades away during navigation) ---------- */
 .locate-button {
   position: absolute;
-  right: 16px;
+  right: max(16px, env(safe-area-inset-right, 0px));
   bottom: calc(56px + env(safe-area-inset-bottom, 0px));
   z-index: 3;
   display: grid;

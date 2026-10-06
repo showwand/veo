@@ -1034,10 +1034,10 @@
 /* ---------- SMALL SCREENS ---------- */
 @media (max-width: 700px) {
   .left-stack {
-    top: 12px;
-    left: 12px;
-    bottom: 24px;
-    width: calc(100% - 24px);
+    top: max(12px, env(safe-area-inset-top, 0px));
+    left: max(12px, env(safe-area-inset-left, 0px));
+    bottom: max(24px, env(safe-area-inset-bottom, 0px));
+    width: calc(100% - max(12px, env(safe-area-inset-left, 0px)) - max(12px, env(safe-area-inset-right, 0px)));
   }
 
   /* On a phone the party button sits inside the search panel's top-right corner,
@@ -1047,22 +1047,22 @@
   }
 
   .party-button {
-    top: 21px;
-    right: 21px;
-    width: 36px;
-    height: 36px;
+    top: max(21px, env(safe-area-inset-top, 0px));
+    right: max(21px, env(safe-area-inset-right, 0px));
+    width: 44px;
+    height: 44px;
   }
 
   .party-button svg {
-    width: 21px;
-    height: 21px;
+    width: 24px;
+    height: 24px;
   }
 
   .party-panel {
     top: auto;
-    right: 8px;
+    right: max(8px, env(safe-area-inset-right, 0px));
     bottom: max(12px, env(safe-area-inset-bottom));
-    left: 8px;
+    left: max(8px, env(safe-area-inset-left, 0px));
     width: auto;
     height: min(78dvh, 680px);
     max-height: calc(100dvh - 84px);
@@ -1114,12 +1114,17 @@
   }
 
   .drawer {
+    --handle-h: 40px;
     width: calc(100% - 24px);
   }
 
   .mode-art {
     width: 48px;
     height: 36px;
+  }
+
+  .drawer {
+    bottom: env(safe-area-inset-bottom, 0px);
   }
 
   .mode-name {

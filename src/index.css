@@ -52,6 +52,11 @@ body,
   overflow: hidden;
 }
 
+html {
+  background: var(--bg-0);
+  overscroll-behavior: none;
+}
+
 body {
   background: var(--bg-0);
   color: var(--text);

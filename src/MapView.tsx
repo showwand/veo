@@ -8,10 +8,12 @@ import "./gps.css";
 import "./accounts.css"; // NEW
 import SearchBox, { type SearchFill, type SearchResult } from "./SearchBox";
 import RouteOptions from "./RouteOptions";
+import TravelModeSelector from "./TravelModeSelector";
 import RouteGraphic from "./RouteGraphic";
 import PartyButton from "./PartyButton";
 import PartyPanel from "./PartyPanel";
 import BottomDrawer from "./BottomDrawer";
+import FriendsHub from "./FriendsHub";
 import StartButton from "./StartButton";
 import InstructionPanel from "./InstructionPanel";
 import StatusPanel from "./StatusPanel";
@@ -36,7 +38,7 @@ import { requestOrientationPermission } from "./deviceOrientation";
 import { createCameraLayer, type CameraLayer } from "./cameraLayer";
 import { createEndpointLayer, type EndpointLayer } from "./endpointLayer";
 import { createSpeedLimitLayer, type SpeedLimitLayer } from "./speedLimitLayer";
-import type { Route } from "./routing";
+import type { Route, TravelMode } from "./routing";
 
 setWorkerUrl(workerUrl);
 
@@ -104,9 +106,10 @@ export default function MapView() {
   const [startFill, setStartFill] = useState<SearchFill | null>(null);
   const [destinationFill, setDestinationFill] = useState<SearchFill | null>(null);
   const fillCounter = useRef(0);
+  const [travelMode, setTravelMode] = useState<TravelMode>("car");
 
   // All available routes between start and destination
-  const { routes, status } = useRouteOptions(start, destination);
+  const { routes, status, error: routeError } = useRouteOptions(start, destination, travelMode);
 
   // Which route the user picked (by id). null = "use the first one".
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
@@ -116,6 +119,7 @@ export default function MapView() {
   const [partyOpen, setPartyOpen] = useState(false);
   const [favouritesOpen, setFavouritesOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false); // NEW
+  const [friendsHubOpen, setFriendsHubOpen] = useState(false);
 
   // The route we actually show. If the picked id isn't in the list
   // (for example after searching somewhere new), fall back to the first route.
@@ -124,7 +128,9 @@ export default function MapView() {
 
   // Cameras (static dataset) and roads / speed limits (Overpass) for the SELECTED route only.
   // Failures here never affect the route: info is simply null.
-  const { info: osmInfo } = useRouteOsmInfo(selectedRoute);
+  const { info: osmInfo } = useRouteOsmInfo(
+    selectedRoute?.mode === "car" ? selectedRoute : null
+  );
 
   // Navigation mode. It reuses the selected route and the OSM info above.
   // GPS, route matching and instructions live inside useNavigation.
@@ -342,6 +348,11 @@ export default function MapView() {
     }
   }
 
+  function handleTravelModeChange(mode: TravelMode) {
+    setTravelMode(mode);
+    setSelectedRouteId(null);
+  }
+
   // Move the map to a place the user just picked
   function moveMapTo(result: SearchResult) {
     const map = mapRef.current;
@@ -381,6 +392,7 @@ export default function MapView() {
   // (they stay mounted; they just close), then navigation begins.
   function handleStartNavigation(route: Route) {
     if (navActive) return;
+    setFriendsHubOpen(false);
     setPartyOpen(false);
     setFavouritesOpen(false);
     setAccountOpen(false); // NEW
@@ -453,6 +465,12 @@ export default function MapView() {
             fill={destinationFill}
           />
 
+          <TravelModeSelector
+            value={travelMode}
+            onChange={handleTravelModeChange}
+            disabled={navActive}
+          />
+
           <RouteGraphic
             start={start}
             destination={destination}
@@ -465,7 +483,7 @@ export default function MapView() {
 
         {/* Stays mounted while navigating (CSS folds it away), so it can animate.
             It only begins navigation. */}
-        {selectedRoute && status === "done" && (
+        {selectedRoute && status === "done" && selectedRoute.mode !== "public-transport" && (
           <StartButton onStart={() => handleStartNavigation(selectedRoute)} />
         )}
 
@@ -473,8 +491,15 @@ export default function MapView() {
           routes={routes}
           selectedId={cardSelectedId}
           status={status}
+          mode={travelMode}
+          error={routeError}
           onSelect={handleRouteSelect}
         />
+        {travelMode === "public-transport" && status === "done" && (
+          <p className="route-mode-note">
+            TfL journey options are shown. In-app turn-by-turn transit guidance is not available yet.
+          </p>
+        )}
       </div>
 
       {/* The top-right buttons (Favourites | Party | Account), their panels, the drawer and the
@@ -523,7 +548,16 @@ export default function MapView() {
         />
         <AccountPanel open={accountOpen} onClose={() => setAccountOpen(false)} />
 
-        <BottomDrawer open={drawerOpen} onOpenChange={handleDrawerOpenChange} />
+        <BottomDrawer
+          open={drawerOpen}
+          onOpenChange={handleDrawerOpenChange}
+          onOpenFriends={() => {
+            setPartyOpen(false);
+            setFavouritesOpen(false);
+            setAccountOpen(false);
+            setFriendsHubOpen(true);
+          }}
+        />
 
         <button
           type="button"
@@ -536,6 +570,16 @@ export default function MapView() {
           <TargetIcon />
         </button>
       </div>
+
+      {friendsHubOpen && (
+        <FriendsHub
+          onClose={() => setFriendsHubOpen(false)}
+          onOpenAccount={() => {
+            setFriendsHubOpen(false);
+            setAccountOpen(true);
+          }}
+        />
+      )}
 
       {/* Which way Veode thinks you face, and where that comes from */}
       <HeadingBadge />
