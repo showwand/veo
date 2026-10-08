@@ -33,20 +33,54 @@
    No `position` here on purpose: MapLibre gives every marker position: absolute,
    and overriding it can shift the marker away from its coordinate. */
 .user-marker {
-  width: 22px;
-  height: 22px;
+  width: 42px;
+  height: 42px;
   pointer-events: none;
 }
 
 .user-dot {
   position: absolute;
-  inset: 0;
+  inset: 10px;
   box-sizing: border-box;
   border-radius: 50%;
   background: var(--accent, #c6ff00);
   border: 3px solid #07080c;
   box-shadow: 0 0 0 2px var(--accent, #c6ff00), 0 0 16px var(--accent-glow, rgba(198, 255, 0, 0.35));
   transition: opacity 0.3s;
+}
+
+.user-vehicle {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent, #c6ff00);
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.9));
+  transform-origin: 50% 50%;
+  transition: opacity 0.25s;
+}
+
+.user-vehicle svg {
+  width: 28px;
+  height: 36px;
+}
+
+.user-marker.is-navigating .user-dot,
+.user-marker.is-navigating .user-cone {
+  opacity: 0;
+}
+
+.user-marker.is-navigating .user-vehicle {
+  display: flex;
+}
+
+.user-marker.is-stale .user-vehicle {
+  opacity: 0.5;
+}
+
+.user-marker.is-poor .user-vehicle {
+  color: var(--warn, #ffb020);
 }
 
 /* The direction cone. It rotates around the dot; the map itself never rotates. */

@@ -178,6 +178,31 @@
   text-overflow: ellipsis;
 }
 
+.nav-reroute-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.nav-reroute-actions button {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--accent, #c6ff00);
+  border-radius: 8px;
+  background: var(--accent, #c6ff00);
+  color: #090b0d;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.nav-reroute-actions button.is-secondary {
+  background: transparent;
+  color: var(--text, #f3f5f7);
+}
+
 /* ----- bottom panel content ----- */
 
 .nav-label {
@@ -436,8 +461,9 @@
 }
 
 .nav-aside.is-navigating > .party-button {
-  top: calc(var(--nav-top-h) + 8px);
-  right: max(12px, env(safe-area-inset-right, 0px));
+  top: calc(var(--nav-top-h) + 8px) !important;
+  right: max(12px, env(safe-area-inset-right, 0px)) !important;
+  transform: none !important;
   z-index: 8;
 }
 

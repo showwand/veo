@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Map, setWorkerUrl, type GeoJSONSource } from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -34,13 +34,15 @@ import { useUserMarker } from "./useUserMarker";
 import { useMapFollow } from "./useMapFollow";
 import { useRouteParty } from "./useRouteParty";
 import { useFriendLocations, useLocationSharing } from "./friendLocations";
-import { hasUsableFix, useLocationStatus } from "./userLocation";
+import { getLocationState, hasUsableFix, useLocationStatus } from "./userLocation";
 import { requestOrientationPermission } from "./deviceOrientation";
 import { createCameraLayer, type CameraLayer } from "./cameraLayer";
 import { createEndpointLayer, type EndpointLayer } from "./endpointLayer";
 import { createSpeedLimitLayer, type SpeedLimitLayer } from "./speedLimitLayer";
 import type { Route, TravelMode } from "./routing";
+import { fetchFastestDrivingRoute } from "./routing";
 import { joinSharedRoute, type SharedRoute } from "./routePartyApi";
+import { buildTrack, coordinatesThroughDistance } from "./routeMatching";
 
 setWorkerUrl(workerUrl);
 
@@ -131,6 +133,9 @@ export default function MapView() {
   const [accountOpen, setAccountOpen] = useState(false); // NEW
   const [friendsHubOpen, setFriendsHubOpen] = useState(false);
   const [routePartyId, setRoutePartyId] = useState<string | null>(null);
+  const handleRouteShare = useCallback((shared: SharedRoute) => {
+    setRoutePartyId(shared.partyId);
+  }, []);
   const [routeInviteCode, setRouteInviteCode] = useState<string | null>(() =>
     typeof window === "undefined"
       ? null
@@ -138,6 +143,13 @@ export default function MapView() {
   );
   const [joiningRoute, setJoiningRoute] = useState(false);
   const [joinRouteError, setJoinRouteError] = useState<string | null>(null);
+  const [rerouteRoute, setRerouteRoute] = useState<Route | null>(null);
+  const [rerouteStatus, setRerouteStatus] = useState<
+    "idle" | "loading" | "ready" | "error" | "unavailable"
+  >("idle");
+  const [rerouteError, setRerouteError] = useState<string | null>(null);
+  const [rerouteRetry, setRerouteRetry] = useState(0);
+  const rerouteAttemptRef = useRef<string | null>(null);
 
   // The route we actually show. If the picked id isn't in the list
   // (for example after searching somewhere new), fall back to the first route.
@@ -157,10 +169,12 @@ export default function MapView() {
   const navigationRoute = navigation.snapshot?.route ?? null;
   const snap = navigation.snapshot;
   const mapRoute = navActive && navigationRoute ? navigationRoute : selectedRoute;
+  const instructionRerouteStatus =
+    snap?.offRoute && navigationRoute?.mode !== "car" ? "unavailable" : rerouteStatus;
 
   // The location dot + direction cone (works before navigation too) and the Locate action
   const locationStatus = useLocationStatus();
-  const user = useUserMarker(mapRef, mapReady);
+  const user = useUserMarker(mapRef, mapReady, navActive, snap?.routeBearingDeg ?? null);
   useLocationSharing();
 
   // NEW: accounts. Starts Supabase's session handling once, and tells us who is signed in.
@@ -195,8 +209,63 @@ export default function MapView() {
     mapRef,
     mapReady,
     active: navActive,
+    routeBearingDeg: snap?.routeBearingDeg ?? null,
     getInsets: getNavInsets,
   });
+
+  useEffect(() => {
+    if (!navActive || !snap?.offRoute || !navigationRoute) {
+      rerouteAttemptRef.current = null;
+      return;
+    }
+    if (navigationRoute.mode !== "car") return;
+    if (rerouteAttemptRef.current === navigationRoute.id) return;
+
+    const fix = getLocationState().fix;
+    const coordinates = navigationRoute.geometry.coordinates;
+    const end = coordinates[coordinates.length - 1];
+    if (!fix || !hasUsableFix() || !end) {
+      let cancelled = false;
+      queueMicrotask(() => {
+        if (cancelled) return;
+        setRerouteStatus("error");
+        setRerouteError("A reliable GPS fix is needed to suggest a new route.");
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    rerouteAttemptRef.current = navigationRoute.id;
+    const controller = new AbortController();
+    const rerouteStart = { lat: fix.lat, lon: fix.lon };
+    async function requestReroute() {
+      await Promise.resolve();
+      if (controller.signal.aborted) return;
+      setRerouteStatus("loading");
+      setRerouteError(null);
+      try {
+        const route = await fetchFastestDrivingRoute(
+          rerouteStart,
+          { lat: end[1], lon: end[0] },
+          controller.signal
+        );
+        if (controller.signal.aborted) return;
+        setRerouteRoute(route);
+        setRerouteStatus("ready");
+      } catch (error: unknown) {
+        if (controller.signal.aborted) return;
+        console.error("Veode navigation: reroute request failed", error);
+        setRerouteError(
+          error instanceof Error ? error.message : "A new route could not be found."
+        );
+        setRerouteStatus("error");
+      }
+    }
+    void requestReroute();
+
+    return () => controller.abort();
+  }, [navActive, snap?.offRoute, navigationRoute, rerouteRetry]);
 
   // 1. Create the map and the (empty) route layers
   useEffect(() => {
@@ -221,6 +290,7 @@ export default function MapView() {
       const casing = css.getPropertyValue("--route-casing").trim() || "#05060a";
 
       map.addSource("route", { type: "geojson", data: EMPTY_ROUTE });
+      map.addSource("route-traveled", { type: "geojson", data: EMPTY_ROUTE });
 
       const lineLayout = { "line-join": "round", "line-cap": "round" } as const;
 
@@ -260,6 +330,28 @@ export default function MapView() {
         layout: lineLayout,
         paint: {
           "line-color": accent,
+          "line-width": ["interpolate", ["linear"], ["zoom"], 8, 4, 16, 11],
+        },
+      });
+
+      map.addLayer({
+        id: "route-traveled-casing",
+        type: "line",
+        source: "route-traveled",
+        layout: lineLayout,
+        paint: {
+          "line-color": casing,
+          "line-width": ["interpolate", ["linear"], ["zoom"], 8, 7, 16, 17],
+        },
+      });
+
+      map.addLayer({
+        id: "route-traveled-line",
+        type: "line",
+        source: "route-traveled",
+        layout: lineLayout,
+        paint: {
+          "line-color": "#8b909b",
           "line-width": ["interpolate", ["linear"], ["zoom"], 8, 4, 16, 11],
         },
       });
@@ -351,6 +443,27 @@ export default function MapView() {
     fitToRoute(map, mapRoute, navActive);
   }, [mapRoute, mapReady, navActive]);
 
+  useEffect(() => {
+    const source = mapRef.current?.getSource("route-traveled") as GeoJSONSource | undefined;
+    if (!source) return;
+    if (!navActive || !mapRoute || snap?.positionMeters === null || snap?.positionMeters === undefined) {
+      source.setData(EMPTY_ROUTE);
+      return;
+    }
+
+    const track = buildTrack(mapRoute.geometry.coordinates);
+    const coordinates = coordinatesThroughDistance(track, snap.positionMeters);
+    source.setData(
+      coordinates.length > 1
+        ? {
+            type: "Feature",
+            properties: {},
+            geometry: { type: "LineString", coordinates },
+          }
+        : EMPTY_ROUTE
+    );
+  }, [mapRoute, mapReady, navActive, snap?.positionMeters]);
+
   // 3. Show the cameras for the selected route.
   // osmInfo is null while loading, on failure, or when there is no route, so
   // the list becomes empty and old cameras are removed straight away.
@@ -428,6 +541,9 @@ export default function MapView() {
   // (they stay mounted; they just close), then navigation begins.
   function handleStartNavigation(route: Route) {
     if (navActive) return;
+    setRerouteRoute(null);
+    setRerouteStatus("idle");
+    setRerouteError(null);
     setFriendsHubOpen(false);
     setPartyOpen(false);
     setFavouritesOpen(false);
@@ -438,6 +554,36 @@ export default function MapView() {
     navigation.start(route); // this also asks for GPS (see useNavigation)
   }
 
+  function handleUseReroute() {
+    if (!rerouteRoute) return;
+    rerouteAttemptRef.current = null;
+    setRerouteRoute(null);
+    setRerouteStatus("idle");
+    navigation.replaceRoute(rerouteRoute);
+    follow.enableFollow();
+  }
+
+  function handleEndNavigation() {
+    setRerouteRoute(null);
+    setRerouteStatus("idle");
+    setRerouteError(null);
+    navigation.end();
+  }
+
+  function handleRetryReroute() {
+    rerouteAttemptRef.current = null;
+    setRerouteStatus("idle");
+    setRerouteError(null);
+    setRerouteRetry((value) => value + 1);
+  }
+
+  function handleDismissReroute() {
+    rerouteAttemptRef.current = navigationRoute?.id ?? null;
+    setRerouteRoute(null);
+    setRerouteStatus("idle");
+    setRerouteError(null);
+  }
+
   // The drawer opens by hovering the bottom edge. That must not happen
   // while navigating, because the drawer stays mounted (invisible) during navigation.
   function handleDrawerOpenChange(open: boolean) {
@@ -446,6 +592,9 @@ export default function MapView() {
   }
 
   function handleJoinedRoute(shared: SharedRoute) {
+    setRerouteRoute(null);
+    setRerouteStatus("idle");
+    setRerouteError(null);
     setRoutePartyId(shared.partyId);
     setRouteInviteCode(null);
     setJoinRouteError(null);
@@ -584,7 +733,7 @@ export default function MapView() {
           open={partyOpen}
           onClose={() => setPartyOpen(false)}
           route={navActive ? navigationRoute : selectedRoute}
-          onShareRoute={(shared) => setRoutePartyId(shared.partyId)}
+          onShareRoute={handleRouteShare}
           onStopSharing={() => setRoutePartyId(null)}
           onJoinRoute={handleJoinedRoute}
         />
@@ -717,13 +866,19 @@ export default function MapView() {
         gpsStatus={snap?.gpsStatus ?? "idle"}
         gpsAccuracyM={snap?.gpsAccuracyM ?? null}
         hasTurnData={snap?.hasTurnData ?? false}
+        rerouteStatus={instructionRerouteStatus}
+        rerouteRoute={rerouteRoute}
+        rerouteError={rerouteError}
+        onUseReroute={handleUseReroute}
+        onRetryReroute={handleRetryReroute}
+        onDismissReroute={handleDismissReroute}
       />
       <StatusPanel
         open={navActive}
         snapshot={snap}
         followUser={follow.followUser}
         onFollow={follow.enableFollow}
-        onEnd={navigation.end}
+        onEnd={handleEndNavigation}
       />
     </div>
   );

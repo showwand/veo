@@ -54,6 +54,7 @@ export class NavigationTracker {
   private offRoute = false;
   private arrived = false;
   private lastMatchDistanceM: number | null = null;
+  private routeBearingDeg: number | null = null;
   private hasMatch = false;
 
   private snapshot: LiveNavigationData = NO_LIVE_DATA;
@@ -96,6 +97,7 @@ export class NavigationTracker {
     this.offRoute = false;
     this.arrived = false;
     this.lastMatchDistanceM = null;
+    this.routeBearingDeg = null;
     this.hasMatch = false;
     this.snapshot = NO_LIVE_DATA;
     this.logged = {
@@ -149,6 +151,7 @@ export class NavigationTracker {
     const onRoute = match.distanceM <= threshold;
     this.hasMatch = true;
     this.lastMatchDistanceM = match.distanceM;
+    this.routeBearingDeg = match.bearingDeg;
 
     if (onRoute) {
       this.missCount = 0;
@@ -272,6 +275,7 @@ export class NavigationTracker {
       positionMeters: known ? this.progress : null,
       progressFraction:
         known && track.lengthMeters > 0 ? Math.min(1, this.progress / track.lengthMeters) : null,
+      routeBearingDeg: this.routeBearingDeg,
       // GPS speed only. null when the device doesn't report one: it is never estimated.
       currentSpeedMph:
         fix && fix.speedMps !== null && speedFresh ? fix.speedMps * MPS_TO_MPH : null,

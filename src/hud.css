@@ -676,6 +676,11 @@
     transform 0.1s;
 }
 
+.pp-route-invite-action {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 /* An accent line sweeps across the bottom edge on hover */
 .pp-request::after {
   content: "";

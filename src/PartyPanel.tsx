@@ -11,9 +11,15 @@ import {
 } from "./partyApi";
 import type { Route } from "./routing";
 import {
-  acceptPartyRouteInvite,
+  getPartyRouteInviteStatuses,
+  getMySharedPartyRoute,
+  invitePartyMemberToRoute,
+  listMyPartyRouteInvites,
+  respondToPartyRouteInvite,
   clearPartySharedRoute,
   sharePartyRoute,
+  type PartyRouteInvite,
+  type RouteInviteStatus,
   type SharedRoute,
 } from "./routePartyApi";
 
@@ -37,6 +43,10 @@ export default function PartyPanel({
   const account = useAccountState();
   const [friends, setFriends] = useState<Friend[]>([]);
   const [partyEntries, setPartyEntries] = useState<PartyEntry[]>([]);
+  const [routeInvites, setRouteInvites] = useState<PartyRouteInvite[]>([]);
+  const [routeInviteStatuses, setRouteInviteStatuses] = useState<
+    Map<string, RouteInviteStatus>
+  >(new Map());
   const [loadedForId, setLoadedForId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -67,12 +77,32 @@ export default function PartyPanel({
       if (cancelled) return;
       setLoading(true);
       setError(null);
-      void Promise.all([listFriends(), listMyParty()]).then(([friendsResult, partyResult]) => {
+      void Promise.all([
+        listFriends(),
+        listMyParty(),
+        listMyPartyRouteInvites(),
+        sharedRoute ? Promise.resolve(null) : getMySharedPartyRoute(),
+        sharedRoute ? getPartyRouteInviteStatuses(sharedRoute.partyId) : Promise.resolve(null),
+      ]).then(([friendsResult, partyResult, routeInvitesResult, savedRouteResult, statusesResult]) => {
         if (cancelled) return;
         if (friendsResult.ok) setFriends(friendsResult.data);
         else setError(friendsResult.message);
         if (partyResult.ok) setPartyEntries(partyResult.data);
         else setError((current) => current ?? partyResult.message);
+        if (routeInvitesResult.ok) setRouteInvites(routeInvitesResult.data);
+        else setError((current) => current ?? routeInvitesResult.message);
+        if (savedRouteResult?.ok && savedRouteResult.data && !sharedRoute) {
+          setSharedRoute(savedRouteResult.data);
+          onShareRoute(savedRouteResult.data);
+        } else if (savedRouteResult && !savedRouteResult.ok) {
+          setError((current) => current ?? savedRouteResult.message);
+        }
+        if (statusesResult?.ok) setRouteInviteStatuses(statusesResult.data);
+        else if (statusesResult && !statusesResult.ok) {
+          setError((current) => current ?? statusesResult.message);
+        } else {
+          setRouteInviteStatuses(new Map());
+        }
         setLoadedForId(userId);
         setLoading(false);
       });
@@ -81,7 +111,7 @@ export default function PartyPanel({
     return () => {
       cancelled = true;
     };
-  }, [open, account.activeId, reload]);
+  }, [open, account.activeId, reload, sharedRoute, onShareRoute]);
 
   async function handleInvite(friend: Friend) {
     setBusyId(friend.id);
@@ -132,11 +162,11 @@ export default function PartyPanel({
   }
 
   async function handleShareRoute() {
-    if (!route || route.mode === "public-transport") return;
+    if (!route || route.mode === "public-transport" || !account.activeId) return;
     setShareBusy(true);
     setShareError(null);
     setCopyNotice(null);
-    const result = await sharePartyRoute(route);
+    const result = await sharePartyRoute(route, account.activeId);
     setShareBusy(false);
     if (!result.ok) {
       setShareError(result.message);
@@ -162,16 +192,33 @@ export default function PartyPanel({
     }
   }
 
-  async function handleJoinRoute(partyId: string) {
+  async function handleRouteInvite(entry: PartyRouteInvite, accept: boolean) {
+    const partyId = entry.sharedRoute.partyId;
     setBusyId(partyId);
     setError(null);
-    const result = await acceptPartyRouteInvite(partyId);
+    const result = await respondToPartyRouteInvite(partyId, accept);
     setBusyId(null);
     if (!result.ok) {
       setError(result.message);
       return;
     }
-    onJoinRoute(result.data);
+    setRouteInvites((current) => current.filter((invite) => invite.sharedRoute.partyId !== partyId));
+    setNotice(accept ? `Joining ${entry.ownerUsername}'s route.` : "Route invitation declined.");
+    setReload((value) => value + 1);
+    if (accept && result.data) onJoinRoute(result.data);
+  }
+
+  async function handleInviteToRoute(partyId: string, memberId: string, username: string) {
+    setBusyId(memberId);
+    setError(null);
+    const result = await invitePartyMemberToRoute(partyId, memberId);
+    if (result.ok) {
+      setRouteInviteStatuses((current) => new Map(current).set(memberId, "pending"));
+      setNotice(`Route invitation sent to ${username}.`);
+    } else {
+      setError(result.message);
+    }
+    setBusyId(null);
   }
 
   async function handleStopSharing() {
@@ -292,6 +339,41 @@ export default function PartyPanel({
           )}
         </section>
 
+        {routeInvites.length > 0 && (
+          <section className="pp-section">
+            <div className="pp-section-title">Route invitations</div>
+            <ul className="pp-party-list">
+              {routeInvites.map((invite) => (
+                <li className="pp-party-row" key={`route-invite-${invite.sharedRoute.partyId}`}>
+                  <img src={avatarSrc(invite.ownerAvatarId)} alt="" />
+                  <div className="pp-person-copy">
+                    <strong>{invite.ownerUsername}</strong>
+                    <span>invited you to join their route</span>
+                  </div>
+                  <div className="pp-row-actions">
+                    <button
+                      type="button"
+                      className="pp-request pp-route-invite-action"
+                      disabled={busyId === invite.sharedRoute.partyId}
+                      onClick={() => void handleRouteInvite(invite, true)}
+                    >
+                      {busyId === invite.sharedRoute.partyId ? "Joining…" : "Accept"}
+                    </button>
+                    <button
+                      type="button"
+                      className="pp-request is-quiet"
+                      disabled={busyId === invite.sharedRoute.partyId}
+                      onClick={() => void handleRouteInvite(invite, false)}
+                    >
+                      Decline
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
         {incomingInvites.length > 0 && (
           <section className="pp-section">
             <div className="pp-section-title">Invitations</div>
@@ -311,14 +393,6 @@ export default function PartyPanel({
                       onClick={() => void handleInviteResponse(entry, true)}
                     >
                       Accept
-                    </button>
-                    <button
-                      type="button"
-                      className="pp-request"
-                      disabled={busyId === entry.partyId}
-                      onClick={() => void handleJoinRoute(entry.partyId)}
-                    >
-                      {busyId === entry.partyId ? "Joining…" : "Join route"}
                     </button>
                     <button
                       type="button"
@@ -369,8 +443,41 @@ export default function PartyPanel({
                             <img src={avatarSrc(entry.memberAvatarId)} alt="" />
                             <div className="pp-person-copy">
                               <strong>{entry.memberId === account.activeId ? "You" : entry.memberUsername}</strong>
-                              <span>{entry.status === "accepted" ? "In party" : "Invitation pending"}</span>
+                              <span>
+                                {entry.status !== "accepted"
+                                  ? "Invitation pending"
+                                  : ownParty && sharedRoute?.partyId === partyId && entry.memberId !== account.activeId
+                                    ? routeInviteStatuses.get(entry.memberId) === "accepted"
+                                      ? "Joined route"
+                                      : routeInviteStatuses.get(entry.memberId) === "pending"
+                                        ? "Route invitation pending"
+                                        : "In party"
+                                    : "In party"}
+                              </span>
                             </div>
+                            {ownParty &&
+                              entry.status === "accepted" &&
+                              entry.memberId !== account.activeId &&
+                              sharedRoute?.partyId === partyId &&
+                              routeInviteStatuses.get(entry.memberId) !== "accepted" && (
+                                <button
+                                  type="button"
+                                  className="pp-request"
+                                  disabled={
+                                    busyId === entry.memberId ||
+                                    routeInviteStatuses.get(entry.memberId) === "pending"
+                                  }
+                                  onClick={() =>
+                                    void handleInviteToRoute(partyId, entry.memberId, entry.memberUsername)
+                                  }
+                                >
+                                  {busyId === entry.memberId
+                                    ? "Sending…"
+                                    : routeInviteStatuses.get(entry.memberId) === "pending"
+                                      ? "Invited"
+                                      : "Invite to route"}
+                                </button>
+                              )}
                           </li>
                         ))}
                       </ul>

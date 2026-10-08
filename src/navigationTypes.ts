@@ -27,6 +27,7 @@ export type LiveNavigationData = {
   maneuver: Maneuver | null;
   positionMeters: number | null; // how far along the route the car is
   progressFraction: number | null; // the same, as 0..1
+  routeBearingDeg: number | null; // bearing of the matched route segment
   currentSpeedMph: number | null; // GPS speed. NOT the speed limit.
   remainingSeconds: number | null; // from OSRM step durations (no traffic)
   remainingMeters: number | null;
@@ -44,6 +45,7 @@ export const NO_LIVE_DATA: LiveNavigationData = {
   maneuver: null,
   positionMeters: null,
   progressFraction: null,
+  routeBearingDeg: null,
   currentSpeedMph: null,
   remainingSeconds: null,
   remainingMeters: null,
@@ -63,6 +65,7 @@ export type NavigationSnapshot = {
   startedAt: number; // when Start was pressed (ms since 1970)
   positionMeters: number | null;
   progressFraction: number | null;
+  routeBearingDeg: number | null;
 
   maneuver: Maneuver | null;
   hasTurnData: boolean; // false if OSRM gave no steps for this route

@@ -7,6 +7,7 @@ import { classifyRoutes } from "./routeScoring";
 import type { RouteStep } from "./osrmSteps";
 import { fetchWalkingRoute } from "./walkingRouting";
 import { fetchPublicTransportRoutes } from "./transitRouting";
+import { getBounds } from "./routeGeometry";
 
 // A point on the map. Your SearchResult objects already fit this shape.
 export type Point = { lat: number; lon: number };
@@ -111,6 +112,27 @@ export async function fetchRouteOptions(
   });
 
   return withSteps(routes, candidates);
+}
+
+export async function fetchFastestDrivingRoute(
+  start: Point,
+  end: Point,
+  signal: AbortSignal
+): Promise<Route> {
+  const candidates = await fetchBaseCandidates(start, end, signal);
+  const fastest = candidates[0];
+  if (!fastest) throw new Error("No driving route found");
+  return {
+    id: `reroute-${Date.now()}`,
+    name: "Suggested reroute",
+    type: "fastest",
+    mode: "car",
+    geometry: fastest.geometry,
+    distanceMeters: fastest.distanceMeters,
+    durationSeconds: fastest.durationSeconds,
+    bounds: getBounds(fastest.geometry.coordinates),
+    steps: fastest.steps,
+  };
 }
 
 // 2520 seconds -> "42 min", 5100 seconds -> "1 h 25 min"

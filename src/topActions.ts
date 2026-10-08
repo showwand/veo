@@ -1,9 +1,6 @@
 import { useLayoutEffect } from "react";
 
-// Lines the three top-right buttons up as  Favourites | Party | Account  (Account far right).
-// I haven't seen PartyButton or hud.css, so this works by MEASURING the Party button where it
-// naturally sits, putting Account in that spot, and sliding Party (with a CSS transform, so
-// it works however Party is positioned) one button-width to the left. Favourites goes next to it.
+// Keep the actions in a stable row instead of deriving positions from transformed buttons.
 const GAP_PX = 10;
 
 function find(selector: string): HTMLElement | null {
@@ -15,32 +12,24 @@ export function layoutTopActions() {
   const favourites = find(".favourites-button");
   const account = find(".account-button");
   if (!party || !favourites || !account) return;
-  const parent = account.offsetParent;
-  if (!(parent instanceof HTMLElement)) return;
+  const mobile = window.innerWidth <= 700;
+  const size = mobile ? 42 : 44;
+  const partySize = mobile ? size : 48;
+  const top = "max(16px, env(safe-area-inset-top, 0px))";
+  const safeRight = mobile
+    ? "max(12px, env(safe-area-inset-right, 0px))"
+    : "max(16px, env(safe-area-inset-right, 0px))";
+  const setButton = (button: HTMLElement, rightOffset: number, buttonSize: number) => {
+    button.style.top = top;
+    button.style.right = `calc(${safeRight} + ${rightOffset}px)`;
+    button.style.width = `${buttonSize}px`;
+    button.style.height = `${buttonSize}px`;
+    button.style.removeProperty("transform");
+  };
 
-  // Where Party sits WITHOUT our slide (we remember how far we slid it)
-  const applied = Number(party.dataset.veodeShift ?? "0") || 0;
-  const rect = party.getBoundingClientRect();
-  if (rect.height === 0) return; // not visible: try again later
-
-  const box = parent.getBoundingClientRect();
-  const size = rect.height; // the new buttons are squares the same height as Party
-  const top = rect.top - box.top;
-  const naturalRight = box.right - (rect.right + applied); // gap from the right edge to Party's natural spot
-  const shift = size + GAP_PX;
-
-  account.style.top = `${top}px`;
-  account.style.right = `${naturalRight}px`;
-  account.style.width = `${size}px`;
-  account.style.height = `${size}px`;
-
-  party.style.transform = `translateX(${-shift}px)`;
-  party.dataset.veodeShift = String(shift);
-
-  favourites.style.top = `${top}px`;
-  favourites.style.right = `${naturalRight + rect.width + shift + GAP_PX}px`;
-  favourites.style.width = `${size}px`;
-  favourites.style.height = `${size}px`;
+  setButton(party, 0, partySize);
+  setButton(account, partySize + GAP_PX, size);
+  setButton(favourites, partySize + GAP_PX + size + GAP_PX, size);
 }
 
 export function useTopActionsLayout() {
@@ -49,15 +38,22 @@ export function useTopActionsLayout() {
     const frame = requestAnimationFrame(layoutTopActions); // once more after the page settles
     const timer = window.setTimeout(layoutTopActions, 400);
     window.addEventListener("resize", layoutTopActions);
+    const mobileQuery = window.matchMedia("(max-width: 700px)");
+    mobileQuery.addEventListener("change", layoutTopActions);
 
     const aside = document.querySelector(".nav-aside");
     const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(layoutTopActions) : null;
     if (aside) observer?.observe(aside);
+    const buttons = [".party-button", ".favourites-button", ".account-button"]
+      .map(find)
+      .filter((button): button is HTMLElement => button !== null);
+    buttons.forEach((button) => observer?.observe(button));
 
     return () => {
       cancelAnimationFrame(frame);
       window.clearTimeout(timer);
       window.removeEventListener("resize", layoutTopActions);
+      mobileQuery.removeEventListener("change", layoutTopActions);
       observer?.disconnect();
     };
   }, []);

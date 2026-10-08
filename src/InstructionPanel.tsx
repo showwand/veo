@@ -1,5 +1,6 @@
 import type { Maneuver, ManeuverKind } from "./navigationTypes";
 import type { LocationStatus } from "./userLocation";
+import { formatDistance, formatDuration, type Route } from "./routing";
 
 type Props = {
   open: boolean;
@@ -12,6 +13,12 @@ type Props = {
   gpsStatus: LocationStatus;
   gpsAccuracyM: number | null;
   hasTurnData: boolean;
+  rerouteStatus: "idle" | "loading" | "ready" | "error" | "unavailable";
+  rerouteRoute: Route | null;
+  rerouteError: string | null;
+  onUseReroute: () => void;
+  onRetryReroute: () => void;
+  onDismissReroute: () => void;
 };
 
 // 300 -> "300 m", 1240 -> "1.2 km"
@@ -119,6 +126,9 @@ function buildView(props: Props): View {
     gpsStatus,
     gpsAccuracyM,
     hasTurnData,
+    rerouteStatus,
+    rerouteRoute,
+    rerouteError,
   } = props;
   const notice = gpsNotice(gpsStatus, gpsAccuracyM);
   const heading = destinationName ? `Heading to ${destinationName}` : null;
@@ -127,11 +137,23 @@ function buildView(props: Props): View {
     return { icon: "arrive", distance: null, text: "You have arrived", sub: destinationName, placeholder: false, warning: false };
   }
   if (offRoute) {
+    const rerouteDescription =
+      rerouteStatus === "loading"
+        ? "Finding a new route from your location…"
+        : rerouteStatus === "ready" && rerouteRoute
+          ? rerouteRoute.distanceMeters === null
+            ? `${formatDuration(rerouteRoute.durationSeconds)}`
+            : `${formatDuration(rerouteRoute.durationSeconds)} · ${formatDistance(rerouteRoute.distanceMeters)}`
+          : rerouteStatus === "error"
+            ? rerouteError ?? "A new route could not be found."
+            : rerouteStatus === "unavailable"
+              ? "Automatic rerouting is currently available for driving routes."
+              : "Checking for a new route…";
     return {
       icon: null,
       distance: null,
       text: "You are off the route",
-      sub: "Automatic rerouting isn't available yet",
+      sub: rerouteDescription,
       placeholder: true,
       warning: true,
     };
@@ -189,6 +211,19 @@ export default function InstructionPanel(props: Props) {
         {view.distance && <div className="nav-distance">{view.distance}</div>}
         <div className={view.placeholder ? "nav-text is-placeholder" : "nav-text"}>{view.text}</div>
         {view.sub && <div className={view.warning ? "nav-sub is-warning" : "nav-sub"}>{view.sub}</div>}
+        {props.offRoute && props.rerouteStatus === "ready" && props.rerouteRoute && (
+          <div className="nav-reroute-actions">
+            <button type="button" onClick={props.onUseReroute}>Use suggested route</button>
+            <button type="button" className="is-secondary" onClick={props.onDismissReroute}>
+              Keep current
+            </button>
+          </div>
+        )}
+        {props.offRoute && props.rerouteStatus === "error" && (
+          <div className="nav-reroute-actions">
+            <button type="button" onClick={props.onRetryReroute}>Try again</button>
+          </div>
+        )}
       </div>
     </section>
   );

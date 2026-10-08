@@ -63,6 +63,7 @@ function buildSnapshot(
     startedAt,
     positionMeters: live.positionMeters,
     progressFraction: live.progressFraction,
+    routeBearingDeg: live.routeBearingDeg,
     maneuver: live.maneuver,
     hasTurnData: (route.steps?.length ?? 0) > 0,
     currentSpeedMph: live.currentSpeedMph,
@@ -126,6 +127,13 @@ export function useNavigation(osmInfo: RouteOsmInfo | null) {
     setPhase("on");
   }
 
+  function replaceRoute(route: Route) {
+    const startedAt = Date.now();
+    setSession({ route, startedAt });
+    setNow(startedAt);
+    setPhase("on");
+  }
+
   function end() {
     releaseLocation("navigation");
     setPhase((current) => (current === "on" ? "leaving" : current));
@@ -138,5 +146,5 @@ export function useNavigation(osmInfo: RouteOsmInfo | null) {
 
   const snapshot = session ? buildSnapshot(session, now, osmInfo, live) : null;
 
-  return { phase, active, snapshot, start, end };
+  return { phase, active, snapshot, start, replaceRoute, end };
 }

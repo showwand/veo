@@ -24,6 +24,14 @@ export type PartyRacer = {
   locationShared: boolean;
 };
 
+export type PartyRouteInvite = {
+  sharedRoute: SharedRoute;
+  ownerUsername: string;
+  ownerAvatarId: string;
+};
+
+export type RouteInviteStatus = "pending" | "accepted" | null;
+
 const ROUTE_TYPES = new Set<RouteType>([
   "fastest",
   "scenic",
@@ -174,7 +182,10 @@ function parseSharedRouteRow(value: unknown): SharedRoute | null {
   );
 }
 
-export async function sharePartyRoute(route: Route): Promise<ApiResult<SharedRoute>> {
+export async function sharePartyRoute(
+  route: Route,
+  ownerId: string
+): Promise<ApiResult<SharedRoute>> {
   try {
     const shareableRoute = {
       id: route.id,
@@ -200,17 +211,18 @@ export async function sharePartyRoute(route: Route): Promise<ApiResult<SharedRou
       return { ok: false, message: "The server did not return a party and route link." };
     }
 
-    const confirmed = await getPartyRoute(parsed.partyId);
-    if (!confirmed.ok) {
-      return {
-        ok: false,
-        message: `The route link was created, but its saved route could not be loaded: ${confirmed.message}`,
-      };
-    }
-    if (confirmed.data.shareCode !== parsed.shareCode) {
-      return { ok: false, message: "The server returned a different route link than expected." };
-    }
-    return confirmed;
+    // share_party_route writes the route and returns its durable party/link identifiers
+    // in the same database transaction. Avoid a second RPC readback here: it can fail
+    // transiently after the route was successfully created and falsely report failure.
+    return {
+      ok: true,
+      data: {
+        partyId: parsed.partyId,
+        ownerId,
+        shareCode: parsed.shareCode,
+        route,
+      },
+    };
   } catch (error) {
     return { ok: false, message: describeError(error) };
   }
@@ -224,6 +236,23 @@ export async function getPartyRoute(partyId: string): Promise<ApiResult<SharedRo
     return shared
       ? { ok: true, data: shared }
       : { ok: false, message: "This party does not have a shareable route." };
+  } catch (error) {
+    return { ok: false, message: describeError(error) };
+  }
+}
+
+export async function getMySharedPartyRoute(): Promise<ApiResult<SharedRoute | null>> {
+  try {
+    const { data, error } = await callRpc("my_shared_party_route");
+    if (error) return { ok: false, message: describeError(error) };
+    if (!Array.isArray(data)) {
+      return { ok: false, message: "The server returned an invalid saved route response." };
+    }
+    if (data.length === 0) return { ok: true, data: null };
+    const shared = parseList(data, (row) => parseSharedRouteRow(row))[0] ?? null;
+    return shared
+      ? { ok: true, data: shared }
+      : { ok: false, message: "The server returned an invalid saved route." };
   } catch (error) {
     return { ok: false, message: describeError(error) };
   }
@@ -318,16 +347,81 @@ export async function clearPartySharedRoute(partyId: string): Promise<ApiResult<
   }
 }
 
-export async function acceptPartyRouteInvite(partyId: string): Promise<ApiResult<SharedRoute>> {
+export async function invitePartyMemberToRoute(
+  partyId: string,
+  memberId: string
+): Promise<ApiResult<null>> {
   try {
-    const routeResult = await getPartyRoute(partyId);
-    if (!routeResult.ok) return routeResult;
-    const { error } = await callRpc("respond_to_party_invite", {
+    const { error } = await callRpc("invite_party_member_to_route", {
       p_party_id: partyId,
-      p_accept: true,
+      p_member_id: memberId,
     });
     if (error) return { ok: false, message: describeError(error) };
-    return routeResult;
+    return { ok: true, data: null };
+  } catch (error) {
+    return { ok: false, message: describeError(error) };
+  }
+}
+
+export async function getPartyRouteInviteStatuses(
+  partyId: string
+): Promise<ApiResult<Map<string, RouteInviteStatus>>> {
+  try {
+    const { data, error } = await callRpc("get_party_route_invite_status", {
+      p_party_id: partyId,
+    });
+    if (error) return { ok: false, message: describeError(error) };
+    const statuses = new Map<string, RouteInviteStatus>();
+    for (const row of parseList(data, (value) => value)) {
+      const memberId = asString(row.member_id);
+      const status = asString(row.route_status);
+      if (memberId) {
+        statuses.set(memberId, status === "pending" || status === "accepted" ? status : null);
+      }
+    }
+    return { ok: true, data: statuses };
+  } catch (error) {
+    return { ok: false, message: describeError(error) };
+  }
+}
+
+export async function listMyPartyRouteInvites(): Promise<ApiResult<PartyRouteInvite[]>> {
+  try {
+    const { data, error } = await callRpc("my_party_route_invites");
+    if (error) return { ok: false, message: describeError(error) };
+    const invites: PartyRouteInvite[] = [];
+    for (const row of parseList(data, (value) => value)) {
+      const sharedRoute = parseSharedRouteRow(row);
+      const ownerUsername = asString(row.owner_username);
+      if (sharedRoute && ownerUsername) {
+        invites.push({
+          sharedRoute,
+          ownerUsername,
+          ownerAvatarId: asString(row.owner_avatar_id) ?? "avatar_01",
+        });
+      }
+    }
+    return { ok: true, data: invites };
+  } catch (error) {
+    return { ok: false, message: describeError(error) };
+  }
+}
+
+export async function respondToPartyRouteInvite(
+  partyId: string,
+  accept: boolean
+): Promise<ApiResult<SharedRoute | null>> {
+  try {
+    const { data, error } = await callRpc("respond_to_party_route_invite", {
+      p_party_id: partyId,
+      p_accept: accept,
+    });
+    if (error) return { ok: false, message: describeError(error) };
+    if (!accept) return { ok: true, data: null };
+    const shared = parseList(data, (row) => parseSharedRouteRow(row))[0] ?? null;
+    return shared
+      ? { ok: true, data: shared }
+      : { ok: false, message: "The server did not return the accepted route." };
   } catch (error) {
     return { ok: false, message: describeError(error) };
   }

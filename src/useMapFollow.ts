@@ -1,4 +1,4 @@
-import { useEffect, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import type { Map } from "maplibre-gl";
 import { getHeadingInfo } from "./heading";
 import { MAX_USABLE_ACCURACY_M, getLocationState, subscribeLocation } from "./userLocation";
@@ -19,6 +19,7 @@ type Options = {
   mapRef: RefObject<Map | null>;
   mapReady: boolean;
   active: boolean; // navigation is running
+  routeBearingDeg: number | null;
   // How much of the screen the black panels cover, so the car sits in the visible middle
   getInsets: (map: Map) => { top: number; bottom: number };
 };
@@ -26,9 +27,14 @@ type Options = {
 // The camera follows the car only while followUser is true.
 // Dragging the map switches it off; the Follow button switches it back on.
 // GPS keeps updating either way: this hook only controls the CAMERA.
-export function useMapFollow({ mapRef, mapReady, active, getInsets }: Options) {
+export function useMapFollow({ mapRef, mapReady, active, routeBearingDeg, getInsets }: Options) {
   const [released, setReleased] = useState(false);
+  const routeBearingRef = useRef(routeBearingDeg);
   const followUser = active && !released;
+
+  useEffect(() => {
+    routeBearingRef.current = routeBearingDeg;
+  }, [routeBearingDeg]);
 
   // A real drag by the user releases the camera. Camera moves made by this hook
   // have no `originalEvent`, so they can never trigger this (no feedback loop).
@@ -59,19 +65,24 @@ export function useMapFollow({ mapRef, mapReady, active, getInsets }: Options) {
       if (!fix || fix.accuracyM > MAX_USABLE_ACCURACY_M) return;
 
       const target: [number, number] = [fix.lon, fix.lat];
-      const inset = getInsets(m);
-      // Put the car in the middle of the visible gap between the two panels.
-      // Navigation keeps the camera heading-up so the user's direction of travel
-      // stays toward the top of the screen.
-      const offset: [number, number] = [0, (inset.top - inset.bottom) / 2];
-
       const { clientWidth, clientHeight } = m.getContainer();
+      const inset = getInsets(m);
+      // Keep the vehicle around 72% down the viewport while leaving room above
+      // the lower navigation panel. Insets remain a guard for unusually short screens.
+      const targetY = Math.min(
+        clientHeight * 0.74,
+        clientHeight - inset.bottom - 36
+      );
+      const offset: [number, number] = [0, targetY - clientHeight / 2];
+
       const wanted = { x: clientWidth / 2 + offset[0], y: clientHeight / 2 + offset[1] };
       const now = m.project(target);
       const away = Math.hypot(now.x - wanted.x, now.y - wanted.y);
 
       const heading = getHeadingInfo();
-      const cameraBearing = heading.degrees ?? null;
+      const travelBearing =
+        heading.source === "gps" || heading.source === "movement" ? heading.degrees : null;
+      const cameraBearing = travelBearing ?? routeBearingRef.current;
 
       if (!first && away < DEADBAND_PX) {
         if (cameraBearing !== null) {

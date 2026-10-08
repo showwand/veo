@@ -2,12 +2,15 @@ import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Marker, type Map as MapLibreMap } from "maplibre-gl";
 import { avatarSrc } from "./avatars";
 import {
+  getPartyRoute,
   getPartyRouteRace,
   reportPartyRouteProgress,
   type PartyRacer,
 } from "./routePartyApi";
 import { getLocationState, MAX_USABLE_ACCURACY_M } from "./userLocation";
 import type { NavigationSnapshot } from "./navigationTypes";
+import type { Route } from "./routing";
+import { buildTrack, matchToRoute, type RouteTrack } from "./routeMatching";
 
 type Options = {
   mapRef: RefObject<MapLibreMap | null>;
@@ -42,18 +45,54 @@ export function useRouteParty({
     error: string | null;
   } | null>(null);
   const [progressError, setProgressError] = useState<string | null>(null);
+  const [sharedRoute, setSharedRoute] = useState<{ partyId: string; route: Route } | null>(null);
+  const [routeLoadError, setRouteLoadError] = useState<{ partyId: string; message: string } | null>(null);
   const markersRef = useRef(new Map<string, RaceMarker>());
   const snapshotRef = useRef(snapshot);
+  const sharedTrack = useMemo<RouteTrack | null>(
+    () =>
+      sharedRoute?.partyId === partyId
+        ? buildTrack(sharedRoute.route.geometry.coordinates)
+        : null,
+    [partyId, sharedRoute]
+  );
+  const routeProgressHint = useRef<number | null>(null);
   const racers = useMemo(
     () => (partyId && raceState?.partyId === partyId ? raceState.racers : []),
     [partyId, raceState]
   );
   const raceError = partyId && raceState?.partyId === partyId ? raceState.error : null;
-  const error = progressError ?? raceError;
+  const error =
+    progressError ??
+    raceError ??
+    (routeLoadError?.partyId === partyId ? routeLoadError.message : null);
 
   useEffect(() => {
     snapshotRef.current = snapshot;
   }, [snapshot]);
+
+  useEffect(() => {
+    if (!partyId) {
+      routeProgressHint.current = null;
+      return;
+    }
+
+    let cancelled = false;
+    routeProgressHint.current = null;
+    void getPartyRoute(partyId).then((result) => {
+      if (cancelled) return;
+      if (result.ok) {
+        setSharedRoute({ partyId, route: result.data.route });
+        setRouteLoadError(null);
+        setProgressError(null);
+      } else {
+        setRouteLoadError({ partyId, message: result.message });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [partyId]);
 
   useEffect(() => {
     if (!partyId) return;
@@ -92,19 +131,30 @@ export function useRouteParty({
       if (
         !fix ||
         fix.accuracyM > MAX_USABLE_ACCURACY_M ||
-        current?.progressFraction === null ||
-        current?.progressFraction === undefined ||
-        current.route.distanceMeters === null
+        !current ||
+        !sharedTrack
       ) {
         timer = window.setTimeout(() => void publishProgress(), 15000);
         return;
       }
 
+      const match = matchToRoute(
+        sharedTrack,
+        fix.lat,
+        fix.lon,
+        routeProgressHint.current
+      );
+      if (!match) {
+        timer = window.setTimeout(() => void publishProgress(), 15000);
+        return;
+      }
+      routeProgressHint.current = match.progressMeters;
+
       const result = await reportPartyRouteProgress(
         partyId,
         fix.lat,
         fix.lon,
-        current.progressFraction * current.route.distanceMeters,
+        match.progressMeters,
         current.remainingMinutes * 60
       );
       if (cancelled) return;
@@ -123,7 +173,7 @@ export function useRouteParty({
       cancelled = true;
       if (timer !== null) window.clearTimeout(timer);
     };
-  }, [partyId, navigationActive]);
+  }, [partyId, navigationActive, sharedTrack]);
 
   useEffect(() => {
     const map = mapRef.current;

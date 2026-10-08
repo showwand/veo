@@ -108,6 +108,19 @@ export function pointAt(track: RouteTrack, meters: number): Coord | null {
   return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
 }
 
+export function coordinatesThroughDistance(track: RouteTrack, meters: number): Coord[] {
+  if (track.coords.length < 2 || !Number.isFinite(meters) || meters <= 0) return [];
+  if (meters >= track.lengthMeters) return [...track.coords];
+
+  const index = findSegment(track, meters);
+  const partial = pointAt(track, meters);
+  if (!partial) return [];
+  const travelled = track.coords.slice(0, index + 1);
+  const last = travelled[travelled.length - 1];
+  if (!last || last[0] !== partial[0] || last[1] !== partial[1]) travelled.push(partial);
+  return travelled.length > 1 ? travelled : [];
+}
+
 function scan(track: RouteTrack, p: Coord, first: number, last: number): RouteMatch | null {
   let best: RouteMatch | null = null;
   for (let i = first; i <= last; i++) {

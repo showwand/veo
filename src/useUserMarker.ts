@@ -18,9 +18,6 @@ import { getHeadingInfo, subscribeHeading, type HeadingInfo } from "./heading";
 
 const CENTER_ZOOM = 14.5;
 
-// Draws the location dot and the direction cone. The marker sits at EXACTLY the reported
-// coordinate: no smoothing, no snapping. In navigation mode the map may rotate to keep
-// the user's heading toward the top of the screen.
 function createUserMarker(map: Map) {
   const root = document.createElement("div");
   root.className = "user-marker";
@@ -28,31 +25,85 @@ function createUserMarker(map: Map) {
   cone.className = "user-cone";
   const dot = document.createElement("div");
   dot.className = "user-dot";
-  root.append(cone, dot);
+  const vehicle = document.createElement("div");
+  vehicle.className = "user-vehicle";
+  vehicle.innerHTML =
+    '<svg viewBox="0 0 40 52" aria-hidden="true"><path d="M11 5 20 1l9 4 6 13v26l-6 6H11l-6-6V18L11 5Zm1 7-3 9h22l-3-9-5-3h-6l-5 3Zm-2 14v9h6v-9h-6Zm14 0v9h6v-9h-6Z" fill="currentColor" stroke="#080a0d" stroke-width="2" stroke-linejoin="round"/><path d="M15 5h10" stroke="#080a0d" stroke-width="2"/></svg>';
+  root.append(cone, dot, vehicle);
 
   const marker = new Marker({ element: root, anchor: "center" });
   let added = false;
-  // The angle we are showing. It is allowed to go past 360 (e.g. 365), so a turn
-  // from 359 to 1 degree is drawn as a 2 degree turn, not a 358 degree spin back.
   let shown: number | null = null;
+  let displayed: [number, number] | null = null;
+  let target: [number, number] | null = null;
+  let animationFrame: number | null = null;
 
   return {
-    update(state: LocationState, heading: HeadingInfo) {
+    update(
+      state: LocationState,
+      heading: HeadingInfo,
+      navigating: boolean,
+      routeBearingDeg: number | null
+    ) {
       const fix = state.fix;
       if (!fix) {
         if (added) marker.remove();
         added = false;
+        displayed = null;
+        target = null;
+        if (animationFrame !== null) cancelAnimationFrame(animationFrame);
+        animationFrame = null;
         return;
       }
 
-      marker.setLngLat([fix.lon, fix.lat]);
+      const next: [number, number] = [fix.lon, fix.lat];
       if (!added) {
+        marker.setLngLat(next);
+        displayed = next;
+        target = next;
         marker.addTo(map);
         added = true;
+      } else if (!target || target[0] !== next[0] || target[1] !== next[1]) {
+        if (animationFrame !== null) cancelAnimationFrame(animationFrame);
+        const from = displayed ?? next;
+        const startedAt = performance.now();
+        const duration = 220;
+        target = next;
+        const animate = (now: number) => {
+          const progress = Math.min(1, (now - startedAt) / duration);
+          const eased = 1 - Math.pow(1 - progress, 3);
+          const position: [number, number] = [
+            from[0] + (next[0] - from[0]) * eased,
+            from[1] + (next[1] - from[1]) * eased,
+          ];
+          marker.setLngLat(position);
+          displayed = position;
+          if (progress < 1) animationFrame = requestAnimationFrame(animate);
+          else animationFrame = null;
+        };
+        animationFrame = requestAnimationFrame(animate);
       }
 
+      root.classList.toggle("is-navigating", navigating);
       root.classList.toggle("is-stale", state.status === "lost");
       root.classList.toggle("is-poor", fix.accuracyM > 100);
+
+      if (navigating) {
+        cone.style.opacity = "0";
+        const direction =
+          heading.source === "gps" || heading.source === "movement"
+            ? heading.degrees
+            : routeBearingDeg;
+        if (direction !== null) {
+          const relative = ((direction - map.getBearing()) % 360 + 360) % 360;
+          shown =
+            shown === null
+              ? relative
+              : shown + ((((relative - shown) % 360) + 540) % 360 - 180);
+          vehicle.style.transform = `rotate(${shown}deg)`;
+        }
+        return;
+      }
 
       if (heading.degrees === null) {
         cone.style.opacity = "0";
@@ -68,6 +119,8 @@ function createUserMarker(map: Map) {
       cone.style.transform = `rotate(${shown}deg)`;
     },
     remove() {
+      if (animationFrame !== null) cancelAnimationFrame(animationFrame);
+      animationFrame = null;
       marker.remove();
       added = false;
     },
@@ -87,9 +140,21 @@ function centerOnUser(map: Map): boolean {
   return true;
 }
 
-export function useUserMarker(mapRef: RefObject<Map | null>, mapReady: boolean) {
+export function useUserMarker(
+  mapRef: RefObject<Map | null>,
+  mapReady: boolean,
+  navigating: boolean,
+  routeBearingDeg: number | null
+) {
   const pendingCenter = useRef(false);
+  const navigatingRef = useRef(navigating);
+  const routeBearingRef = useRef(routeBearingDeg);
   const watching = useLocationWatching();
+
+  useEffect(() => {
+    navigatingRef.current = navigating;
+    routeBearingRef.current = routeBearingDeg;
+  }, [navigating, routeBearingDeg]);
 
   // If the user already allowed location for this site, start showing it straight away
   useEffect(() => {
@@ -131,7 +196,7 @@ export function useUserMarker(mapRef: RefObject<Map | null>, mapReady: boolean) 
     const marker = createUserMarker(map);
     const refresh = () => {
       const state = getLocationState();
-      marker.update(state, getHeadingInfo());
+      marker.update(state, getHeadingInfo(), navigatingRef.current, routeBearingRef.current);
       if (
         pendingCenter.current &&
         state.fix &&
@@ -144,11 +209,13 @@ export function useUserMarker(mapRef: RefObject<Map | null>, mapReady: boolean) 
 
     const offLocation = subscribeLocation(refresh);
     const offHeading = subscribeHeading(refresh);
+    map.on("rotate", refresh);
     refresh();
 
     return () => {
       offLocation();
       offHeading();
+      map.off("rotate", refresh);
       marker.remove();
     };
   }, [mapRef, mapReady]);
