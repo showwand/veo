@@ -57,6 +57,11 @@ export default function RouteOptions({
             ? "Walking route"
             : `${routes.length} ${routes.length === 1 ? "journey" : "journeys"}`}
       </div>
+      {mode === "car" && (
+        <div className="route-time-disclaimer">
+          Route times are estimates and do not include live traffic.
+        </div>
+      )}
 
       {routes.map((route) => {
         const { hours, minutes } = splitDuration(route.durationSeconds);

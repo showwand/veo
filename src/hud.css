@@ -231,6 +231,12 @@
   box-shadow: 0 0 8px rgba(53, 207, 117, 0.7);
 }
 
+.traffic-indicator.is-invalid-referer,
+.traffic-indicator.is-error {
+  color: #ffd447;
+  letter-spacing: 0.04em;
+}
+
 .traffic-indicator-legend {
   display: flex;
   gap: 2px;

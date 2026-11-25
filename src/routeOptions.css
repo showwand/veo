@@ -27,6 +27,15 @@
   color: var(--text-dim);
 }
 
+.route-time-disclaimer {
+  align-self: flex-start;
+  padding: 5px 8px;
+  background: rgba(7, 8, 12, 0.88);
+  color: var(--text-faint);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
 /* One route = one card (a button, so it works with keyboard too) */
 .route-option {
   display: grid;

@@ -53,6 +53,7 @@ const tomtomTrafficApiKey =
     : "";
 const hasTomTomTrafficKey = tomtomTrafficApiKey.length > 0;
 const trafficLayerId = "tomtom-traffic-flow";
+type TrafficStatus = "loading" | "active" | "invalid-referer" | "error";
 
 // "No line" - used before a route exists, and to clear the line
 const EMPTY_ROUTE = { type: "FeatureCollection" as const, features: [] };
@@ -115,6 +116,7 @@ export default function MapView() {
 
   // True once the map style has finished loading (we can't add a line before that)
   const [mapReady, setMapReady] = useState(false);
+  const [trafficStatus, setTrafficStatus] = useState<TrafficStatus>("loading");
 
   // The places the user picked (null = not chosen yet)
   const [start, setStart] = useState<SearchResult | null>(null);
@@ -290,6 +292,38 @@ export default function MapView() {
 
     mapRef.current = map;
 
+    const onTrafficError = (event: {
+      error: { message: string };
+      sourceId?: string;
+    }) => {
+      const message = event.error.message;
+      if (
+        event.sourceId !== "tomtom-traffic-flow" &&
+        !message.includes("api.tomtom.com/traffic/map/4/tile/flow")
+      ) {
+        return;
+      }
+
+      setTrafficStatus(
+        /invalidreferer|invalid referer/i.test(message)
+          ? "invalid-referer"
+          : "error"
+      );
+    };
+    const onTrafficData = (event: {
+      sourceId?: string;
+      sourceDataType?: string;
+    }) => {
+      if (
+        event.sourceId === "tomtom-traffic-flow" &&
+        event.sourceDataType === "content"
+      ) {
+        setTrafficStatus("active");
+      }
+    };
+    map.on("error", onTrafficError);
+    map.on("sourcedata", onTrafficData);
+
     async function setUpLayers() {
       // Read the route colours from our CSS tokens, so the design lives in one place
       const css = getComputedStyle(document.documentElement);
@@ -428,6 +462,8 @@ export default function MapView() {
       cameraLayerRef.current?.destroy();
       cameraLayerRef.current = null;
       endpointLayerRef.current = null;
+      map.off("error", onTrafficError);
+      map.off("sourcedata", onTrafficData);
       map.remove();
       mapRef.current = null;
     };
@@ -683,18 +719,30 @@ export default function MapView() {
     <div className={navActive ? "map-wrapper is-navigating" : "map-wrapper"}>
       <div ref={containerRef} className="map-container" />
       {trafficActive && (
-        <div className="traffic-indicator" role="status" aria-live="polite">
+        <div
+          className={`traffic-indicator is-${trafficStatus}`}
+          role="status"
+          aria-live="polite"
+        >
           {hasTomTomTrafficKey ? (
-            <>
-              <span className="traffic-indicator-light" />
-              <span>LIVE TRAFFIC</span>
-              <span className="traffic-indicator-legend" aria-hidden="true">
-                <i className="is-free" />
-                <i className="is-slow" />
-                <i className="is-heavy" />
-              </span>
-              <span className="traffic-indicator-credit">TomTom</span>
-            </>
+            trafficStatus === "active" ? (
+              <>
+                <span className="traffic-indicator-light" />
+                <span>LIVE TRAFFIC</span>
+                <span className="traffic-indicator-legend" aria-hidden="true">
+                  <i className="is-free" />
+                  <i className="is-slow" />
+                  <i className="is-heavy" />
+                </span>
+                <span className="traffic-indicator-credit">TomTom</span>
+              </>
+            ) : trafficStatus === "invalid-referer" ? (
+              <span>ALLOW THIS DOMAIN IN TOMTOM KEY SETTINGS</span>
+            ) : trafficStatus === "error" ? (
+              <span>TOMTOM TRAFFIC UNAVAILABLE · CHECK KEY ACCESS</span>
+            ) : (
+              <span>LOADING TOMTOM TRAFFIC…</span>
+            )
           ) : (
             <span>Set VITE_TOMTOM_API_KEY to enable live traffic</span>
           )}

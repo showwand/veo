@@ -306,6 +306,16 @@
   font-variant-numeric: tabular-nums;
 }
 
+.nav-traffic-note {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-faint);
+  font-size: 8px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+}
+
 /* =========================================================
    THE NORMAL UI CHANGING INTO NAVIGATION MODE
    Every rule here has a normal state and a `.is-navigating` state, and a

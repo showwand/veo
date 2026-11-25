@@ -85,6 +85,9 @@ export default function StatusPanel({ open, snapshot, followUser, onFollow, onEn
         </div>
         <div className="nav-remaining">
           {snapshot ? `${snapshot.remainingMinutes} min` : "--"}
+          {snapshot?.route.mode === "car" && (
+            <span className="nav-traffic-note">Estimate · no live traffic</span>
+          )}
         </div>
       </div>
     </section>
