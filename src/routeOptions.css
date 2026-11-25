@@ -133,6 +133,18 @@
   line-height: 1.35;
 }
 
+.option-traffic-status {
+  margin-top: 5px;
+  color: var(--text-faint);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.option-traffic-status.is-available {
+  color: #38d780;
+}
+
 .route-option:hover,
 .route-option:focus-visible {
   background: var(--bg-2);

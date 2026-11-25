@@ -7,7 +7,8 @@ type TomTomTrafficSection = {
   startPointIndex?: number;
   endPointIndex?: number;
   sectionType?: string;
-  magnitudeOfDelay?: number;
+  magnitudeOfDelay?: number | string;
+  simpleCategory?: string;
 };
 
 type TomTomTrafficRoute = {
@@ -22,6 +23,31 @@ type TomTomTrafficResponse = { routes?: TomTomTrafficRoute[] };
 
 const MAX_WAYPOINTS = 20;
 const MIN_SAMPLE_SPACING_M = 1000;
+
+function delaySeverity(section: TomTomTrafficSection): number | null {
+  const magnitude = section.magnitudeOfDelay;
+  if (typeof magnitude === "number" && magnitude >= 1 && magnitude <= 4) {
+    return magnitude;
+  }
+  if (typeof magnitude === "string") {
+    const level = magnitude.toUpperCase();
+    if (level === "MINOR") return 1;
+    if (level === "MODERATE") return 2;
+    if (level === "MAJOR" || level === "SEVERE") return 3;
+    if (level === "VERY_SEVERE" || level === "CRITICAL") return 4;
+  }
+
+  switch (section.simpleCategory?.toUpperCase()) {
+    case "SLOW":
+      return 2;
+    case "JAM":
+      return 3;
+    case "BLOCKED":
+      return 4;
+    default:
+      return null;
+  }
+}
 
 function routeWaypoints(track: RouteTrack): [number, number][] {
   if (track.lengthMeters <= 0) return [];
@@ -85,13 +111,11 @@ function parseSegments(
   for (const section of sections) {
     const start = section.startPointIndex;
     const end = section.endPointIndex;
-    const severity = section.magnitudeOfDelay;
+    const severity = delaySeverity(section);
     if (
       typeof start !== "number" ||
       typeof end !== "number" ||
-      typeof severity !== "number" ||
-      severity < 1 ||
-      severity > 4 ||
+      severity === null ||
       (section.sectionType && !/traffic/i.test(section.sectionType))
     ) {
       continue;

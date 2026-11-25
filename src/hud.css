@@ -26,6 +26,19 @@
   pointer-events: auto;
 }
 
+@media (max-width: 700px) {
+  .map-wrapper.is-map-browsing .left-stack {
+    transform: translateX(calc(-100% - 24px));
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition:
+      transform 220ms cubic-bezier(0.22, 0.8, 0.3, 1),
+      opacity 180ms ease,
+      visibility 0s linear 220ms;
+  }
+}
+
 /* The spacer itself must never block the map */
 .left-stack-spacer {
   flex: 1 1 0;

@@ -126,6 +126,7 @@ export default function MapView() {
 
   // True once the map style has finished loading (we can't add a line before that)
   const [mapReady, setMapReady] = useState(false);
+  const [mapBrowsing, setMapBrowsing] = useState(false);
 
   // The places the user picked (null = not chosen yet)
   const [start, setStart] = useState<SearchResult | null>(null);
@@ -421,7 +422,12 @@ export default function MapView() {
         source: "route",
         layout: lineLayout,
         paint: {
-          "line-color": accent,
+          "line-color": [
+            "case",
+            ["==", ["get", "trafficDataAvailable"], true],
+            "#38d780",
+            accent,
+          ],
           "line-opacity": 0.35,
           "line-blur": 8,
           "line-width": ["interpolate", ["linear"], ["zoom"], 8, 12, 16, 28],
@@ -447,7 +453,12 @@ export default function MapView() {
         source: "route",
         layout: lineLayout,
         paint: {
-          "line-color": accent,
+          "line-color": [
+            "case",
+            ["==", ["get", "trafficDataAvailable"], true],
+            "#38d780",
+            accent,
+          ],
           "line-width": ["interpolate", ["linear"], ["zoom"], 8, 4, 16, 11],
         },
       });
@@ -549,6 +560,58 @@ export default function MapView() {
     };
   }, []);
 
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    const mobileQuery = window.matchMedia("(max-width: 700px)");
+    const activeGestures = new Set<string>();
+    let restoreTimer: number | undefined;
+
+    const onGestureStart = (event: { originalEvent?: unknown; type?: string }) => {
+      if (!mobileQuery.matches || !event.originalEvent) return;
+      activeGestures.add(event.type ?? "gesture");
+      window.clearTimeout(restoreTimer);
+      setMapBrowsing(true);
+    };
+    const onGestureEnd = (event: { type?: string }) => {
+      if (!mobileQuery.matches) return;
+      activeGestures.delete(event.type ?? "gesture");
+      if (activeGestures.size > 0) return;
+      window.clearTimeout(restoreTimer);
+      restoreTimer = window.setTimeout(() => setMapBrowsing(false), 260);
+    };
+    const onViewportChange = () => {
+      if (!mobileQuery.matches) {
+        window.clearTimeout(restoreTimer);
+        setMapBrowsing(false);
+      }
+    };
+
+    map.on("dragstart", onGestureStart);
+    map.on("zoomstart", onGestureStart);
+    map.on("rotatestart", onGestureStart);
+    map.on("pitchstart", onGestureStart);
+    map.on("dragend", onGestureEnd);
+    map.on("zoomend", onGestureEnd);
+    map.on("rotateend", onGestureEnd);
+    map.on("pitchend", onGestureEnd);
+    mobileQuery.addEventListener("change", onViewportChange);
+
+    return () => {
+      window.clearTimeout(restoreTimer);
+      map.off("dragstart", onGestureStart);
+      map.off("zoomstart", onGestureStart);
+      map.off("rotatestart", onGestureStart);
+      map.off("pitchstart", onGestureStart);
+      map.off("dragend", onGestureEnd);
+      map.off("zoomend", onGestureEnd);
+      map.off("rotateend", onGestureEnd);
+      map.off("pitchend", onGestureEnd);
+      mobileQuery.removeEventListener("change", onViewportChange);
+      setMapBrowsing(false);
+    };
+  }, [mapReady]);
+
   // 2. Draw the SELECTED route (or clear the line) and fit the map to it.
   // This runs whenever the selected route changes: new search results arrive,
   // or the user picks a different option. It also runs when navigation starts or
@@ -572,7 +635,9 @@ export default function MapView() {
     if (drawnRouteRef.current !== mapRoute) {
       source.setData({
         type: "Feature",
-        properties: {},
+        properties: {
+          trafficDataAvailable: mapRoute.trafficDataAvailable === true,
+        },
         geometry: mapRoute.geometry,
       });
       (map.getSource("route-traffic") as GeoJSONSource | undefined)?.setData({
@@ -815,8 +880,16 @@ export default function MapView() {
       ? "Location is blocked in your browser settings"
       : "Show my location";
 
+  const mapWrapperClass = [
+    "map-wrapper",
+    navActive ? "is-navigating" : "",
+    mapBrowsing ? "is-map-browsing" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <div className={navActive ? "map-wrapper is-navigating" : "map-wrapper"}>
+    <div className={mapWrapperClass}>
       <div ref={containerRef} className="map-container" />
       {/* Left column: search panel on top, route cards below.
           In navigation mode (class is-navigating) the search panel fades away, the

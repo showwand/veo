@@ -134,6 +134,21 @@ export default function RouteOptions({
                   {km.toFixed(1)} km · {miles.toFixed(1)} mi
                 </span>
               )}
+              {mode === "car" && (
+                <span
+                  className={
+                    route.trafficDataAvailable
+                      ? "option-traffic-status is-available"
+                      : "option-traffic-status"
+                  }
+                >
+                  {route.trafficDataAvailable
+                    ? route.trafficSegments?.length
+                      ? `LIVE · ${route.trafficSegments.length} DELAYED SECTIONS`
+                      : "LIVE · NO DELAY SECTIONS RETURNED"
+                    : "TRAFFIC DATA UNAVAILABLE"}
+                </span>
+              )}
             </span>
           </button>
         );
