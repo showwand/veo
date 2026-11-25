@@ -8,6 +8,7 @@ import type { RouteStep } from "./osrmSteps";
 import { fetchWalkingRoute } from "./walkingRouting";
 import { fetchPublicTransportRoutes } from "./transitRouting";
 import { getBounds } from "./routeGeometry";
+import { fetchTomTomTrafficForRoute } from "./routeTraffic";
 
 // A point on the map. Your SearchResult objects already fit this shape.
 export type Point = { lat: number; lon: number };
@@ -43,6 +44,13 @@ export type Route = {
   bounds: [number, number, number, number];
   // OSRM's turn-by-turn steps for this route. Empty if OSRM gave none.
   steps?: RouteStep[];
+  trafficDataAvailable?: boolean;
+  trafficSegments?: TrafficSegment[];
+};
+
+export type TrafficSegment = {
+  coordinates: [number, number][];
+  magnitudeOfDelay: number;
 };
 
 // If the first round finds fewer than this many different routes, we try more detours
@@ -111,7 +119,48 @@ export async function fetchRouteOptions(
     shown: routes.map((route) => route.name),
   });
 
-  return withSteps(routes, candidates);
+  const routesWithSteps = withSteps(routes, candidates);
+  const trafficRoutes = await enrichTrafficForRoutes(routesWithSteps, signal);
+
+  if (trafficRoutes.every((route) => route.trafficDataAvailable)) {
+    trafficRoutes.sort((a, b) => a.durationSeconds - b.durationSeconds);
+    let alternativeNumber = 0;
+    trafficRoutes.forEach((route, index) => {
+      if (index === 0) {
+        route.name = "Fastest · live traffic";
+      } else if (route.type === "avoid-motorways") {
+        route.name = "Avoid Motorways";
+      } else {
+        alternativeNumber += 1;
+        route.name = `Alternative ${alternativeNumber}`;
+      }
+    });
+  }
+  return trafficRoutes;
+}
+
+export async function enrichTrafficForRoutes(
+  routes: Route[],
+  signal: AbortSignal
+): Promise<Route[]> {
+  const trafficKey =
+    typeof import.meta.env.VITE_TOMTOM_API_KEY === "string"
+      ? import.meta.env.VITE_TOMTOM_API_KEY.trim()
+      : "";
+  if (!trafficKey) return routes;
+
+  const trafficRoutes = await Promise.all(
+    routes.map(async (route) => {
+      try {
+        return await fetchTomTomTrafficForRoute(route, trafficKey, signal);
+      } catch (error) {
+        if (signal.aborted) throw error;
+        return { ...route, trafficDataAvailable: false };
+      }
+    })
+  );
+  signal.throwIfAborted();
+  return trafficRoutes;
 }
 
 export async function fetchFastestDrivingRoute(

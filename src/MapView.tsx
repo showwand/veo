@@ -40,20 +40,14 @@ import { createCameraLayer, type CameraLayer } from "./cameraLayer";
 import { createEndpointLayer, type EndpointLayer } from "./endpointLayer";
 import { createSpeedLimitLayer, type SpeedLimitLayer } from "./speedLimitLayer";
 import type { Route, TravelMode } from "./routing";
-import { fetchFastestDrivingRoute } from "./routing";
+import { enrichTrafficForRoutes, fetchFastestDrivingRoute } from "./routing";
 import { joinSharedRoute, type SharedRoute } from "./routePartyApi";
-import { buildTrack, coordinatesThroughDistance } from "./routeMatching";
+import { buildTrack, coordinatesThroughDistance, pointAt } from "./routeMatching";
 
 setWorkerUrl(workerUrl);
 
 const LONDON: [number, number] = [-0.1278, 51.5074];
-const tomtomTrafficApiKey =
-  typeof import.meta.env.VITE_TOMTOM_API_KEY === "string"
-    ? import.meta.env.VITE_TOMTOM_API_KEY.trim()
-    : "";
-const hasTomTomTrafficKey = tomtomTrafficApiKey.length > 0;
-const trafficLayerId = "tomtom-traffic-flow";
-type TrafficStatus = "loading" | "active" | "invalid-referer" | "error";
+const routeTrafficLayerId = "route-traffic-line";
 
 // "No line" - used before a route exists, and to clear the line
 const EMPTY_ROUTE = { type: "FeatureCollection" as const, features: [] };
@@ -103,6 +97,22 @@ function fitToRoute(map: Map, route: Route, navigating = false) {
   });
 }
 
+function coordinatesRemaining(
+  coordinates: [number, number][],
+  distanceMeters: number
+): [number, number][] {
+  const track = buildTrack(coordinates);
+  const start = pointAt(track, distanceMeters);
+  if (!start) return [];
+  return [
+    start,
+    ...track.coords.filter((_, index) => {
+      const distance = track.cumulative[index];
+      return distance !== undefined && distance > distanceMeters;
+    }),
+  ];
+}
+
 export default function MapView() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<Map | null>(null);
@@ -116,7 +126,6 @@ export default function MapView() {
 
   // True once the map style has finished loading (we can't add a line before that)
   const [mapReady, setMapReady] = useState(false);
-  const [trafficStatus, setTrafficStatus] = useState<TrafficStatus>("loading");
 
   // The places the user picked (null = not chosen yet)
   const [start, setStart] = useState<SearchResult | null>(null);
@@ -158,6 +167,11 @@ export default function MapView() {
   const [rerouteError, setRerouteError] = useState<string | null>(null);
   const [rerouteRetry, setRerouteRetry] = useState(0);
   const rerouteAttemptRef = useRef<string | null>(null);
+  const [trafficRerouteSuggestion, setTrafficRerouteSuggestion] = useState(false);
+  const [trafficSavingsMinutes, setTrafficSavingsMinutes] = useState<number | null>(null);
+  const trafficSuggestionRef = useRef(false);
+  const trafficSuggestionDismissedAtRef = useRef(0);
+  const latestPositionMetersRef = useRef<number | null>(null);
 
   // The route we actually show. If the picked id isn't in the list
   // (for example after searching somewhere new), fall back to the first route.
@@ -177,9 +191,12 @@ export default function MapView() {
   const navigationRoute = navigation.snapshot?.route ?? null;
   const snap = navigation.snapshot;
   const mapRoute = navActive && navigationRoute ? navigationRoute : selectedRoute;
-  const trafficActive = Boolean(destination || navigationRoute);
   const instructionRerouteStatus =
     snap?.offRoute && navigationRoute?.mode !== "car" ? "unavailable" : rerouteStatus;
+
+  useEffect(() => {
+    latestPositionMetersRef.current = snap?.positionMeters ?? null;
+  }, [snap?.positionMeters]);
 
   // The location dot + direction cone (works before navigation too) and the Locate action
   const locationStatus = useLocationStatus();
@@ -254,11 +271,16 @@ export default function MapView() {
       setRerouteStatus("loading");
       setRerouteError(null);
       try {
-        const route = await fetchFastestDrivingRoute(
+        const reroute = await fetchFastestDrivingRoute(
           rerouteStart,
           { lat: end[1], lon: end[0] },
           controller.signal
         );
+        const [route] = await enrichTrafficForRoutes(
+          [reroute],
+          controller.signal
+        );
+        if (!route) throw new Error("No reroute was returned.");
         if (controller.signal.aborted) return;
         setRerouteRoute(route);
         setRerouteStatus("ready");
@@ -276,6 +298,92 @@ export default function MapView() {
     return () => controller.abort();
   }, [navActive, snap?.offRoute, navigationRoute, rerouteRetry]);
 
+  useEffect(() => {
+    if (!navActive || navigationRoute?.mode !== "car" || snap?.offRoute) return;
+
+    let checking = false;
+    let controller: AbortController | null = null;
+    const checkTrafficAlternative = async () => {
+      if (
+        checking ||
+        trafficSuggestionRef.current ||
+        Date.now() - trafficSuggestionDismissedAtRef.current < 5 * 60_000
+      ) {
+        return;
+      }
+      const fix = getLocationState().fix;
+      const positionMeters = latestPositionMetersRef.current;
+      const end = navigationRoute.geometry.coordinates.at(-1);
+      if (!fix || !hasUsableFix() || positionMeters === null || !end) return;
+
+      const currentCoordinates = coordinatesRemaining(
+        navigationRoute.geometry.coordinates,
+        positionMeters
+      );
+      if (currentCoordinates.length < 2) return;
+
+      checking = true;
+      const requestController = new AbortController();
+      controller = requestController;
+      try {
+        const [alternative, currentRoute] = await Promise.all([
+          fetchFastestDrivingRoute(
+            { lat: fix.lat, lon: fix.lon },
+            { lat: end[1], lon: end[0] },
+            requestController.signal
+          ),
+          Promise.resolve({
+            ...navigationRoute,
+            geometry: { type: "LineString" as const, coordinates: currentCoordinates },
+          }),
+        ]);
+        const trafficRoutes = await enrichTrafficForRoutes(
+          [currentRoute, alternative],
+          requestController.signal
+        );
+        if (requestController.signal.aborted) return;
+        const [currentWithTraffic, alternativeWithTraffic] = trafficRoutes;
+        if (
+          !currentWithTraffic?.trafficDataAvailable ||
+          !alternativeWithTraffic?.trafficDataAvailable
+        ) {
+          return;
+        }
+
+        const savingsSeconds =
+          currentWithTraffic.durationSeconds - alternativeWithTraffic.durationSeconds;
+        const requiredSavings = Math.max(
+          120,
+          currentWithTraffic.durationSeconds * 0.15
+        );
+        if (savingsSeconds < requiredSavings) return;
+
+        setRerouteRoute({
+          ...alternativeWithTraffic,
+          name: "Traffic alternative",
+        });
+        setRerouteStatus("ready");
+        setTrafficSavingsMinutes(Math.round(savingsSeconds / 60));
+        trafficSuggestionRef.current = true;
+        setTrafficRerouteSuggestion(true);
+      } catch {
+        if (!requestController.signal.aborted) {
+          console.info("Veode navigation: traffic alternative check unavailable.");
+        }
+      } finally {
+        checking = false;
+      }
+    };
+
+    const intervalId = window.setInterval(() => {
+      void checkTrafficAlternative();
+    }, 120_000);
+    return () => {
+      window.clearInterval(intervalId);
+      controller?.abort();
+    };
+  }, [navActive, navigationRoute, snap?.offRoute]);
+
   // 1. Create the map and the (empty) route layers
   useEffect(() => {
     if (!containerRef.current) return;
@@ -292,63 +400,14 @@ export default function MapView() {
 
     mapRef.current = map;
 
-    const onTrafficError = (event: {
-      error: { message: string };
-      sourceId?: string;
-    }) => {
-      const message = event.error.message;
-      if (
-        event.sourceId !== "tomtom-traffic-flow" &&
-        !message.includes("api.tomtom.com/traffic/map/4/tile/flow")
-      ) {
-        return;
-      }
-
-      setTrafficStatus(
-        /invalidreferer|invalid referer/i.test(message)
-          ? "invalid-referer"
-          : "error"
-      );
-    };
-    const onTrafficData = (event: {
-      sourceId?: string;
-      sourceDataType?: string;
-    }) => {
-      if (
-        event.sourceId === "tomtom-traffic-flow" &&
-        event.sourceDataType === "content"
-      ) {
-        setTrafficStatus("active");
-      }
-    };
-    map.on("error", onTrafficError);
-    map.on("sourcedata", onTrafficData);
-
     async function setUpLayers() {
       // Read the route colours from our CSS tokens, so the design lives in one place
       const css = getComputedStyle(document.documentElement);
       const accent = css.getPropertyValue("--accent").trim() || "#c6ff00";
       const casing = css.getPropertyValue("--route-casing").trim() || "#05060a";
 
-      if (hasTomTomTrafficKey) {
-        map.addSource("tomtom-traffic-flow", {
-          type: "raster",
-          tiles: [
-            `https://api.tomtom.com/traffic/map/4/tile/flow/relative/{z}/{x}/{y}.png?key=${encodeURIComponent(tomtomTrafficApiKey)}`,
-          ],
-          tileSize: 256,
-          attribution: "Traffic data © TomTom",
-        });
-        map.addLayer({
-          id: trafficLayerId,
-          type: "raster",
-          source: "tomtom-traffic-flow",
-          layout: { visibility: "none" },
-          paint: { "raster-opacity": 0.8 },
-        });
-      }
-
       map.addSource("route", { type: "geojson", data: EMPTY_ROUTE });
+      map.addSource("route-traffic", { type: "geojson", data: EMPTY_ROUTE });
       map.addSource("route-traveled", { type: "geojson", data: EMPTY_ROUTE });
 
       const lineLayout = { "line-join": "round", "line-cap": "round" } as const;
@@ -389,6 +448,29 @@ export default function MapView() {
         layout: lineLayout,
         paint: {
           "line-color": accent,
+          "line-width": ["interpolate", ["linear"], ["zoom"], 8, 4, 16, 11],
+        },
+      });
+
+      map.addLayer({
+        id: routeTrafficLayerId,
+        type: "line",
+        source: "route-traffic",
+        layout: lineLayout,
+        paint: {
+          "line-color": [
+            "match",
+            ["get", "magnitudeOfDelay"],
+            1,
+            "#38d780",
+            2,
+            "#f4cf43",
+            3,
+            "#f28a36",
+            4,
+            "#ec4d52",
+            accent,
+          ],
           "line-width": ["interpolate", ["linear"], ["zoom"], 8, 4, 16, 11],
         },
       });
@@ -462,18 +544,10 @@ export default function MapView() {
       cameraLayerRef.current?.destroy();
       cameraLayerRef.current = null;
       endpointLayerRef.current = null;
-      map.off("error", onTrafficError);
-      map.off("sourcedata", onTrafficData);
       map.remove();
       mapRef.current = null;
     };
   }, []);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady || !hasTomTomTrafficKey || !map.getLayer(trafficLayerId)) return;
-    map.setLayoutProperty(trafficLayerId, "visibility", trafficActive ? "visible" : "none");
-  }, [mapReady, trafficActive]);
 
   // 2. Draw the SELECTED route (or clear the line) and fit the map to it.
   // This runs whenever the selected route changes: new search results arrive,
@@ -488,6 +562,7 @@ export default function MapView() {
 
     if (!mapRoute) {
       source.setData(EMPTY_ROUTE);
+      (map.getSource("route-traffic") as GeoJSONSource | undefined)?.setData(EMPTY_ROUTE);
       drawnRouteRef.current = null;
       return;
     }
@@ -499,6 +574,14 @@ export default function MapView() {
         type: "Feature",
         properties: {},
         geometry: mapRoute.geometry,
+      });
+      (map.getSource("route-traffic") as GeoJSONSource | undefined)?.setData({
+        type: "FeatureCollection",
+        features: (mapRoute.trafficSegments ?? []).map((segment) => ({
+          type: "Feature" as const,
+          properties: { magnitudeOfDelay: segment.magnitudeOfDelay },
+          geometry: { type: "LineString" as const, coordinates: segment.coordinates },
+        })),
       });
       drawnRouteRef.current = mapRoute;
     }
@@ -608,6 +691,10 @@ export default function MapView() {
   // (they stay mounted; they just close), then navigation begins.
   function handleStartNavigation(route: Route) {
     if (navActive) return;
+    trafficSuggestionRef.current = false;
+    trafficSuggestionDismissedAtRef.current = 0;
+    setTrafficRerouteSuggestion(false);
+    setTrafficSavingsMinutes(null);
     setRerouteRoute(null);
     setRerouteStatus("idle");
     setRerouteError(null);
@@ -623,6 +710,10 @@ export default function MapView() {
 
   function handleUseReroute() {
     if (!rerouteRoute) return;
+    trafficSuggestionRef.current = false;
+    trafficSuggestionDismissedAtRef.current = 0;
+    setTrafficRerouteSuggestion(false);
+    setTrafficSavingsMinutes(null);
     rerouteAttemptRef.current = null;
     setRerouteRoute(null);
     setRerouteStatus("idle");
@@ -631,6 +722,9 @@ export default function MapView() {
   }
 
   function handleEndNavigation() {
+    trafficSuggestionRef.current = false;
+    setTrafficRerouteSuggestion(false);
+    setTrafficSavingsMinutes(null);
     setRerouteRoute(null);
     setRerouteStatus("idle");
     setRerouteError(null);
@@ -645,6 +739,12 @@ export default function MapView() {
   }
 
   function handleDismissReroute() {
+    if (trafficRerouteSuggestion) {
+      trafficSuggestionRef.current = false;
+      trafficSuggestionDismissedAtRef.current = Date.now();
+      setTrafficRerouteSuggestion(false);
+      setTrafficSavingsMinutes(null);
+    }
     rerouteAttemptRef.current = navigationRoute?.id ?? null;
     setRerouteRoute(null);
     setRerouteStatus("idle");
@@ -718,37 +818,6 @@ export default function MapView() {
   return (
     <div className={navActive ? "map-wrapper is-navigating" : "map-wrapper"}>
       <div ref={containerRef} className="map-container" />
-      {trafficActive && (
-        <div
-          className={`traffic-indicator is-${trafficStatus}`}
-          role="status"
-          aria-live="polite"
-        >
-          {hasTomTomTrafficKey ? (
-            trafficStatus === "active" ? (
-              <>
-                <span className="traffic-indicator-light" />
-                <span>LIVE TRAFFIC</span>
-                <span className="traffic-indicator-legend" aria-hidden="true">
-                  <i className="is-free" />
-                  <i className="is-slow" />
-                  <i className="is-heavy" />
-                </span>
-                <span className="traffic-indicator-credit">TomTom</span>
-              </>
-            ) : trafficStatus === "invalid-referer" ? (
-              <span>ALLOW THIS DOMAIN IN TOMTOM KEY SETTINGS</span>
-            ) : trafficStatus === "error" ? (
-              <span>TOMTOM TRAFFIC UNAVAILABLE · CHECK KEY ACCESS</span>
-            ) : (
-              <span>LOADING TOMTOM TRAFFIC…</span>
-            )
-          ) : (
-            <span>Set VITE_TOMTOM_API_KEY to enable live traffic</span>
-          )}
-        </div>
-      )}
-
       {/* Left column: search panel on top, route cards below.
           In navigation mode (class is-navigating) the search panel fades away, the
           unselected cards fade and close up, and the column lifts so the selected card
@@ -966,6 +1035,8 @@ export default function MapView() {
         rerouteStatus={instructionRerouteStatus}
         rerouteRoute={rerouteRoute}
         rerouteError={rerouteError}
+        trafficRerouteSuggestion={trafficRerouteSuggestion}
+        trafficSavingsMinutes={trafficSavingsMinutes}
         onUseReroute={handleUseReroute}
         onRetryReroute={handleRetryReroute}
         onDismissReroute={handleDismissReroute}

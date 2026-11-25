@@ -26,6 +26,7 @@ export default function RouteOptions({
   onSelect,
 }: Props) {
   if (status === "idle") return null;
+  const routesWithTraffic = routes.filter((route) => route.trafficDataAvailable).length;
 
   if (status === "loading") {
     return (
@@ -59,7 +60,22 @@ export default function RouteOptions({
       </div>
       {mode === "car" && (
         <div className="route-time-disclaimer">
-          Route times are estimates and do not include live traffic.
+          {routesWithTraffic === routes.length
+            ? "Traffic data © TomTom · times adjusted · colors show traffic on the selected route."
+            : routesWithTraffic > 0
+              ? "Live traffic is available for some routes only; other times are estimates."
+              : "Live traffic route data unavailable; route times exclude traffic."}
+          {routesWithTraffic === routes.length && (
+            <span
+              className="route-traffic-legend"
+              aria-label="Traffic severity: light, moderate, heavy"
+            >
+              <i className="is-light" />
+              <i className="is-moderate" />
+              <i className="is-heavy" />
+              <i className="is-severe" />
+            </span>
+          )}
         </div>
       )}
 

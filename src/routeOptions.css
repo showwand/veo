@@ -29,11 +29,42 @@
 
 .route-time-disclaimer {
   align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 5px 8px;
   background: rgba(7, 8, 12, 0.88);
   color: var(--text-faint);
   font-size: 10px;
   line-height: 1.35;
+}
+
+.route-traffic-legend {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 3px;
+}
+
+.route-traffic-legend i {
+  width: 10px;
+  height: 4px;
+  border-radius: 2px;
+}
+
+.route-traffic-legend .is-light {
+  background: #38d780;
+}
+
+.route-traffic-legend .is-moderate {
+  background: #f4cf43;
+}
+
+.route-traffic-legend .is-heavy {
+  background: #f28a36;
+}
+
+.route-traffic-legend .is-severe {
+  background: #ec4d52;
 }
 
 /* One route = one card (a button, so it works with keyboard too) */

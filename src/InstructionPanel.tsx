@@ -16,6 +16,8 @@ type Props = {
   rerouteStatus: "idle" | "loading" | "ready" | "error" | "unavailable";
   rerouteRoute: Route | null;
   rerouteError: string | null;
+  trafficRerouteSuggestion: boolean;
+  trafficSavingsMinutes: number | null;
   onUseReroute: () => void;
   onRetryReroute: () => void;
   onDismissReroute: () => void;
@@ -219,6 +221,22 @@ export default function InstructionPanel(props: Props) {
             </button>
           </div>
         )}
+        {!props.offRoute &&
+          props.trafficRerouteSuggestion &&
+          props.rerouteStatus === "ready" &&
+          props.rerouteRoute && (
+            <div className="nav-reroute-actions">
+              <span>
+                Traffic ahead · save about {props.trafficSavingsMinutes ?? 0} min
+              </span>
+              <button type="button" onClick={props.onUseReroute}>
+                Use traffic alternative
+              </button>
+              <button type="button" className="is-secondary" onClick={props.onDismissReroute}>
+                Keep current
+              </button>
+            </div>
+          )}
         {props.offRoute && props.rerouteStatus === "error" && (
           <div className="nav-reroute-actions">
             <button type="button" onClick={props.onRetryReroute}>Try again</button>
