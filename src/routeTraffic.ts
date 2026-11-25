@@ -14,6 +14,9 @@ type TomTomTrafficSection = {
 type TomTomTrafficRoute = {
   summary?: {
     travelTimeInSeconds?: number;
+    trafficDelayInSeconds?: number;
+    noTrafficTravelTimeInSeconds?: number;
+    liveTrafficIncidentsTravelTimeInSeconds?: number;
   };
   legs?: Array<{ points?: TomTomPoint[] }>;
   sections?: TomTomTrafficSection[];
@@ -147,6 +150,7 @@ export async function fetchTomTomTrafficForRoute(
     routeType: "fastest",
     routeRepresentation: "polyline",
     sectionType: "traffic",
+    computeTravelTimeFor: "all",
     key: apiKey,
   });
   const response = await fetch(
@@ -159,7 +163,17 @@ export async function fetchTomTomTrafficForRoute(
 
   const data = (await response.json()) as TomTomTrafficResponse;
   const result = data.routes?.[0];
-  const duration = result?.summary?.travelTimeInSeconds;
+  const trafficDelay =
+    result?.summary?.trafficDelayInSeconds ??
+    (typeof result?.summary?.liveTrafficIncidentsTravelTimeInSeconds === "number" &&
+    typeof result.summary.noTrafficTravelTimeInSeconds === "number"
+      ? result.summary.liveTrafficIncidentsTravelTimeInSeconds -
+        result.summary.noTrafficTravelTimeInSeconds
+      : typeof result?.summary?.travelTimeInSeconds === "number" &&
+          typeof result.summary.noTrafficTravelTimeInSeconds === "number"
+        ? result.summary.travelTimeInSeconds -
+          result.summary.noTrafficTravelTimeInSeconds
+        : null);
   const tomTomCoordinates =
     result?.legs
       ?.flatMap((leg) => leg.points ?? [])
@@ -170,13 +184,17 @@ export async function fetchTomTomTrafficForRoute(
       ) ?? [];
   const trafficTrack = buildTrack(tomTomCoordinates);
 
-  if (!result || typeof duration !== "number" || !Number.isFinite(duration)) {
-    throw new Error("TomTom did not return a traffic-aware route duration.");
+  if (
+    !result ||
+    typeof trafficDelay !== "number" ||
+    !Number.isFinite(trafficDelay)
+  ) {
+    throw new Error("TomTom did not return a traffic delay for this route.");
   }
 
   return {
     ...route,
-    durationSeconds: duration,
+    durationSeconds: route.durationSeconds + Math.max(0, trafficDelay),
     trafficDataAvailable: true,
     trafficSegments: parseSegments(
       result.sections,

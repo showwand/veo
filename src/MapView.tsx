@@ -173,6 +173,7 @@ export default function MapView() {
   const trafficSuggestionRef = useRef(false);
   const trafficSuggestionDismissedAtRef = useRef(0);
   const latestPositionMetersRef = useRef<number | null>(null);
+  const latestProgressFractionRef = useRef<number | null>(null);
 
   // The route we actually show. If the picked id isn't in the list
   // (for example after searching somewhere new), fall back to the first route.
@@ -198,6 +199,10 @@ export default function MapView() {
   useEffect(() => {
     latestPositionMetersRef.current = snap?.positionMeters ?? null;
   }, [snap?.positionMeters]);
+
+  useEffect(() => {
+    latestProgressFractionRef.current = snap?.progressFraction ?? null;
+  }, [snap?.progressFraction]);
 
   // The location dot + direction cone (works before navigation too) and the Locate action
   const locationStatus = useLocationStatus();
@@ -314,6 +319,7 @@ export default function MapView() {
       }
       const fix = getLocationState().fix;
       const positionMeters = latestPositionMetersRef.current;
+      const progressFraction = latestProgressFractionRef.current ?? 0;
       const end = navigationRoute.geometry.coordinates.at(-1);
       if (!fix || !hasUsableFix() || positionMeters === null || !end) return;
 
@@ -336,6 +342,8 @@ export default function MapView() {
           Promise.resolve({
             ...navigationRoute,
             geometry: { type: "LineString" as const, coordinates: currentCoordinates },
+            durationSeconds:
+              navigationRoute.durationSeconds * Math.max(0, 1 - progressFraction),
           }),
         ]);
         const trafficRoutes = await enrichTrafficForRoutes(
@@ -561,24 +569,94 @@ export default function MapView() {
   }, []);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
+    const container = containerRef.current;
+    if (!container) return;
     const mobileQuery = window.matchMedia("(max-width: 700px)");
-    const activeGestures = new Set<string>();
+    const activePointers = new Set<number>();
+    const activeTouches = new Set<number>();
     let restoreTimer: number | undefined;
 
-    const onGestureStart = (event: { originalEvent?: unknown; type?: string }) => {
-      if (!mobileQuery.matches || !event.originalEvent) return;
-      activeGestures.add(event.type ?? "gesture");
+    const scheduleRestore = () => {
+      window.clearTimeout(restoreTimer);
+      restoreTimer = window.setTimeout(() => setMapBrowsing(false), 350);
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      if (!mobileQuery.matches) return;
+      activePointers.add(event.pointerId);
       window.clearTimeout(restoreTimer);
       setMapBrowsing(true);
     };
-    const onGestureEnd = (event: { type?: string }) => {
+    const onPointerRelease = (event: PointerEvent) => {
+      activePointers.delete(event.pointerId);
+      if (!mobileQuery.matches || activePointers.size > 0) return;
+      scheduleRestore();
+    };
+    const onMouseDown = () => {
       if (!mobileQuery.matches) return;
-      activeGestures.delete(event.type ?? "gesture");
-      if (activeGestures.size > 0) return;
       window.clearTimeout(restoreTimer);
-      restoreTimer = window.setTimeout(() => setMapBrowsing(false), 260);
+      setMapBrowsing(true);
+    };
+    const onTouchStart = (event: TouchEvent) => {
+      if (!mobileQuery.matches) return;
+      for (const touch of Array.from(event.changedTouches)) {
+        activeTouches.add(touch.identifier);
+      }
+      window.clearTimeout(restoreTimer);
+      setMapBrowsing(true);
+    };
+    const onTouchRelease = (event: TouchEvent) => {
+      for (const touch of Array.from(event.changedTouches)) {
+        activeTouches.delete(touch.identifier);
+      }
+      if (!mobileQuery.matches || activeTouches.size > 0) return;
+      scheduleRestore();
+    };
+    const onViewportChange = () => {
+      if (mobileQuery.matches) return;
+      activePointers.clear();
+      window.clearTimeout(restoreTimer);
+      setMapBrowsing(false);
+    };
+
+    container.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("pointerup", onPointerRelease);
+    window.addEventListener("pointercancel", onPointerRelease);
+    container.addEventListener("mousedown", onMouseDown);
+    window.addEventListener("mouseup", scheduleRestore);
+    container.addEventListener("touchstart", onTouchStart, { passive: true });
+    window.addEventListener("touchend", onTouchRelease);
+    window.addEventListener("touchcancel", onTouchRelease);
+    mobileQuery.addEventListener("change", onViewportChange);
+    return () => {
+      window.clearTimeout(restoreTimer);
+      container.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointerup", onPointerRelease);
+      window.removeEventListener("pointercancel", onPointerRelease);
+      container.removeEventListener("mousedown", onMouseDown);
+      window.removeEventListener("mouseup", scheduleRestore);
+      container.removeEventListener("touchstart", onTouchStart);
+      window.removeEventListener("touchend", onTouchRelease);
+      window.removeEventListener("touchcancel", onTouchRelease);
+      mobileQuery.removeEventListener("change", onViewportChange);
+      setMapBrowsing(false);
+    };
+  }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    const mobileQuery = window.matchMedia("(max-width: 700px)");
+    let restoreTimer: number | undefined;
+
+    const onGestureStart = (event: { originalEvent?: unknown }) => {
+      if (!mobileQuery.matches || !event.originalEvent) return;
+      window.clearTimeout(restoreTimer);
+      setMapBrowsing(true);
+    };
+    const onGestureEnd = () => {
+      if (!mobileQuery.matches) return;
+      window.clearTimeout(restoreTimer);
+      restoreTimer = window.setTimeout(() => setMapBrowsing(false), 350);
     };
     const onViewportChange = () => {
       if (!mobileQuery.matches) {
