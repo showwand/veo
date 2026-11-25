@@ -49,21 +49,22 @@
   transition: opacity 0.3s;
 }
 
-.user-vehicle {
+.user-arrow {
   position: absolute;
   inset: 0;
   display: none;
   align-items: center;
   justify-content: center;
-  color: var(--accent, #c6ff00);
-  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.9));
+  color: #168dff;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.95))
+    drop-shadow(0 0 7px rgba(22, 141, 255, 0.75));
   transform-origin: 50% 50%;
   transition: opacity 0.25s;
 }
 
-.user-vehicle svg {
-  width: 28px;
-  height: 36px;
+.user-arrow svg {
+  width: 34px;
+  height: 34px;
 }
 
 .user-marker.is-navigating .user-dot,
@@ -71,16 +72,17 @@
   opacity: 0;
 }
 
-.user-marker.is-navigating .user-vehicle {
+.user-marker.is-navigating .user-arrow {
   display: flex;
 }
 
-.user-marker.is-stale .user-vehicle {
+.user-marker.is-stale .user-arrow {
   opacity: 0.5;
 }
 
-.user-marker.is-poor .user-vehicle {
-  color: var(--warn, #ffb020);
+.user-marker.is-poor .user-arrow {
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.95))
+    drop-shadow(0 0 7px rgba(255, 176, 32, 0.7));
 }
 
 /* The direction cone. It rotates around the dot; the map itself never rotates. */

@@ -25,11 +25,11 @@ function createUserMarker(map: Map) {
   cone.className = "user-cone";
   const dot = document.createElement("div");
   dot.className = "user-dot";
-  const vehicle = document.createElement("div");
-  vehicle.className = "user-vehicle";
-  vehicle.innerHTML =
-    '<svg viewBox="0 0 40 52" aria-hidden="true"><path d="M11 5 20 1l9 4 6 13v26l-6 6H11l-6-6V18L11 5Zm1 7-3 9h22l-3-9-5-3h-6l-5 3Zm-2 14v9h6v-9h-6Zm14 0v9h6v-9h-6Z" fill="currentColor" stroke="#080a0d" stroke-width="2" stroke-linejoin="round"/><path d="M15 5h10" stroke="#080a0d" stroke-width="2"/></svg>';
-  root.append(cone, dot, vehicle);
+  const arrow = document.createElement("div");
+  arrow.className = "user-arrow";
+  arrow.innerHTML =
+    '<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 3 43 43 24 34 5 43 24 3Z" fill="currentColor" stroke="#f4fbff" stroke-width="2.5" stroke-linejoin="round"/></svg>';
+  root.append(cone, dot, arrow);
 
   const marker = new Marker({ element: root, anchor: "center" });
   let added = false;
@@ -100,7 +100,7 @@ function createUserMarker(map: Map) {
             shown === null
               ? relative
               : shown + ((((relative - shown) % 360) + 540) % 360 - 180);
-          vehicle.style.transform = `rotate(${shown}deg)`;
+          arrow.style.transform = `rotate(${shown}deg)`;
         }
         return;
       }

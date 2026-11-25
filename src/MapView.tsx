@@ -47,6 +47,12 @@ import { buildTrack, coordinatesThroughDistance } from "./routeMatching";
 setWorkerUrl(workerUrl);
 
 const LONDON: [number, number] = [-0.1278, 51.5074];
+const tomtomTrafficApiKey =
+  typeof import.meta.env.VITE_TOMTOM_API_KEY === "string"
+    ? import.meta.env.VITE_TOMTOM_API_KEY.trim()
+    : "";
+const hasTomTomTrafficKey = tomtomTrafficApiKey.length > 0;
+const trafficLayerId = "tomtom-traffic-flow";
 
 // "No line" - used before a route exists, and to clear the line
 const EMPTY_ROUTE = { type: "FeatureCollection" as const, features: [] };
@@ -169,6 +175,7 @@ export default function MapView() {
   const navigationRoute = navigation.snapshot?.route ?? null;
   const snap = navigation.snapshot;
   const mapRoute = navActive && navigationRoute ? navigationRoute : selectedRoute;
+  const trafficActive = Boolean(destination || navigationRoute);
   const instructionRerouteStatus =
     snap?.offRoute && navigationRoute?.mode !== "car" ? "unavailable" : rerouteStatus;
 
@@ -289,6 +296,24 @@ export default function MapView() {
       const accent = css.getPropertyValue("--accent").trim() || "#c6ff00";
       const casing = css.getPropertyValue("--route-casing").trim() || "#05060a";
 
+      if (hasTomTomTrafficKey) {
+        map.addSource("tomtom-traffic-flow", {
+          type: "raster",
+          tiles: [
+            `https://api.tomtom.com/traffic/map/4/tile/flow/relative/{z}/{x}/{y}.png?key=${encodeURIComponent(tomtomTrafficApiKey)}`,
+          ],
+          tileSize: 256,
+          attribution: "Traffic data © TomTom",
+        });
+        map.addLayer({
+          id: trafficLayerId,
+          type: "raster",
+          source: "tomtom-traffic-flow",
+          layout: { visibility: "none" },
+          paint: { "raster-opacity": 0.8 },
+        });
+      }
+
       map.addSource("route", { type: "geojson", data: EMPTY_ROUTE });
       map.addSource("route-traveled", { type: "geojson", data: EMPTY_ROUTE });
 
@@ -407,6 +432,12 @@ export default function MapView() {
       mapRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || !hasTomTomTrafficKey || !map.getLayer(trafficLayerId)) return;
+    map.setLayoutProperty(trafficLayerId, "visibility", trafficActive ? "visible" : "none");
+  }, [mapReady, trafficActive]);
 
   // 2. Draw the SELECTED route (or clear the line) and fit the map to it.
   // This runs whenever the selected route changes: new search results arrive,
@@ -651,6 +682,24 @@ export default function MapView() {
   return (
     <div className={navActive ? "map-wrapper is-navigating" : "map-wrapper"}>
       <div ref={containerRef} className="map-container" />
+      {trafficActive && (
+        <div className="traffic-indicator" role="status" aria-live="polite">
+          {hasTomTomTrafficKey ? (
+            <>
+              <span className="traffic-indicator-light" />
+              <span>LIVE TRAFFIC</span>
+              <span className="traffic-indicator-legend" aria-hidden="true">
+                <i className="is-free" />
+                <i className="is-slow" />
+                <i className="is-heavy" />
+              </span>
+              <span className="traffic-indicator-credit">TomTom</span>
+            </>
+          ) : (
+            <span>Set VITE_TOMTOM_API_KEY to enable live traffic</span>
+          )}
+        </div>
+      )}
 
       {/* Left column: search panel on top, route cards below.
           In navigation mode (class is-navigating) the search panel fades away, the
